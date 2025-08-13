@@ -377,10 +377,11 @@ class MainWindow(QMainWindow):
         self.current_sort_column = 3
         self.current_sort_order = Qt.SortOrder.DescendingOrder
         
+        # Get header reference before using it
+        header = self.table_view.horizontalHeader()
+        
         # Connect to header click to track sort changes
         header.sectionClicked.connect(self.on_header_clicked)
-
-        header = self.table_view.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Artist
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Title
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Song ID
