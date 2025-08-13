@@ -19,8 +19,9 @@ class SongDownloader(QObject):
     download_progress = pyqtSignal(str, int)  # (song_id, progress_in_percent)
     download_finished = pyqtSignal(str)  # (song_id)
     download_failed = pyqtSignal(str, str)  # (song_id, error_message)
+    song_download_completed = pyqtSignal(str)  # Signal when individual song completes
 
-    def __init__(self, config, session, max_concurrent_downloads = 10, parent = None):
+    def __init__(self, config, session, max_concurrent_downloads = 5, parent = None):
         super().__init__(parent)
         self.download_dir = Path(config ["download_dir"]).resolve()  # Use pathlib, get from config
         self.session = session
@@ -148,6 +149,7 @@ class SongDownloader(QObject):
 
                 logger.info(f"Successfully downloaded: {song['title']} ({song_id}) - {downloaded_length} bytes")
                 self.download_finished.emit(song_id)
+                self.song_download_completed.emit(song_id)  # Emit individual completion signal
                 return
 
             except requests.exceptions.RequestException as e:

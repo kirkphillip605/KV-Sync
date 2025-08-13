@@ -158,6 +158,12 @@ class MainWindow(QMainWindow):
         get_tracks_action.triggered.connect(self.get_new_tracks)
         toolbar.addAction(get_tracks_action)
 
+        # Stop operation
+        self.stop_action = QAction(QIcon("resources/buttons/stop.png"), "Stop Operation", self)
+        self.stop_action.triggered.connect(self.stop_current_operation)
+        self.stop_action.setEnabled(False)  # Disabled by default
+        toolbar.addAction(self.stop_action)
+
         # Validate DB
         validate_db_action = QAction(QIcon("resources/buttons/validate.png"), "Validate Database", self)
         validate_db_action.triggered.connect(self.validate_db)
@@ -366,6 +372,13 @@ class MainWindow(QMainWindow):
         self.table_view.setModel(self.table_model)
         self.table_view.setSortingEnabled(True)
         self.table_view.sortByColumn(3, Qt.SortOrder.DescendingOrder)
+        
+        # Store current sort state
+        self.current_sort_column = 3
+        self.current_sort_order = Qt.SortOrder.DescendingOrder
+        
+        # Connect to header click to track sort changes
+        header.sectionClicked.connect(self.on_header_clicked)
 
         header = self.table_view.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Artist
@@ -483,10 +496,12 @@ class MainWindow(QMainWindow):
 
         scraped_count = self.db_manager.get_newly_added_song_count()  # Get count of newly added songs
         self.db_manager.update_log_operation(log_id, "success", f"Scraping completed. {scraped_count} new songs found.")
-        self.load_table_view_data()
+        self.refresh_table_with_sort()
         self.update_record_count()
-        self.download_new_tracks()
-        self.end_operation()
+        if not self.stop_requested:
+            self.download_new_tracks()
+        else:
+            self.end_operation("Operation stopped by user.")
         logger.debug("scrape_finished: Completed.")
 
     def download_new_tracks(self):
@@ -545,6 +560,10 @@ class MainWindow(QMainWindow):
             return
 
         self.downloader = SongDownloader(self.config_manager.get_config() ["Settings"], self.session, parent=self)
+        
+        # Connect individual download completion to table refresh
+        self.downloader.song_download_completed.connect(self.on_song_download_completed)
+        
         self.download_thread = DownloadThread(song_dicts,  # Pass the list of dictionaries
                                               self.downloader, self.db_manager, unzip_songs=self.unzip_songs,
                                               delete_zip=self.delete_zip_after_extraction)
@@ -565,7 +584,7 @@ class MainWindow(QMainWindow):
         downloaded_count = self.db_manager.get_newly_downloaded_song_count()  # Get count of newly downloaded songs
         self.db_manager.update_log_operation(log_id, "success",
                                              f"Downloads completed. {downloaded_count} songs downloaded.")
-        self.load_table_view_data()
+        self.refresh_table_with_sort()
         self.update_record_count()
         self.end_operation()
         logger.debug("download_finished: Completed.")
@@ -621,13 +640,15 @@ class MainWindow(QMainWindow):
         validated_count = self.db_manager.get_total_song_count()  # Get total songs after validation
         self.db_manager.update_log_operation(log_id, "success",
                                              f"Database validation and reset completed. {validated_count} songs re-validated.")
-        self.load_table_view_data()
+        self.refresh_table_with_sort()
         self.update_record_count()
         self.end_operation()
         logger.debug("validate_db_finished: Completed.")
 
     def start_operation(self, message = "Starting operation..."):
         self.operation_in_progress = True
+        self.stop_requested = False
+        self.stop_action.setEnabled(True)
         self.stop_poll_timers()
         self.status_progress.setVisible(True)
         self.status_progress.setValue(0)
@@ -638,6 +659,8 @@ class MainWindow(QMainWindow):
     def end_operation(self, message = "Operation completed."):
         logger.debug(f"end_operation: Operation ending with message: {message}")
         self.operation_in_progress = False
+        self.stop_requested = False
+        self.stop_action.setEnabled(False)
         self.set_status_message(message)
         self.status_progress.setVisible(False)
         self.update_tray_tooltip()
@@ -664,12 +687,15 @@ class MainWindow(QMainWindow):
         logger.debug("quit_application: Quitting application...")
         self.end_operation("Closing application...")
         self.stop_poll_timers()
+        
+        # Signal threads to stop but don't wait (non-blocking)
         if self.scrape_thread and self.scrape_thread.isRunning():
-            self.scrape_thread.stop_scraping()  # Request stop for scrape thread
-            self.scrape_thread.wait()
+            self.scrape_thread.stop_scraping()
+            logger.debug("Signaled scrape thread to stop")
         if self.download_thread and self.download_thread.isRunning():
-            self.download_thread.stop_downloading()  # Request stop for download thread
-            self.download_thread.wait()
+            self.download_thread.stop_downloading()
+            logger.debug("Signaled download thread to stop")
+            
         self.tray_icon.hide()
         self.close()
 
@@ -680,7 +706,7 @@ class MainWindow(QMainWindow):
         logger.debug("minimize_to_tray: Minimized to tray.")
 
     def refresh_table(self):
-        self.load_table_view_data()
+        self.refresh_table_with_sort()
         self.update_record_count()
         self.set_status_message("Table refreshed")
         logger.debug("refresh_table: Table refreshed.")
@@ -692,6 +718,61 @@ class MainWindow(QMainWindow):
         logs_dialog.resize(1000, 700)  # Set default size here
         logs_dialog.exec()
         logger.debug("view_logs: Log window closed.")
+
+    def on_header_clicked(self, logical_index):
+        """Track table sort changes"""
+        self.current_sort_column = logical_index
+        self.current_sort_order = self.table_view.horizontalHeader().sortIndicatorOrder()
+        logger.debug(f"Table sorted by column {logical_index}, order: {self.current_sort_order}")
+
+    def stop_current_operation(self):
+        """Stop the current operation gracefully"""
+        logger.debug("stop_current_operation: User requested to stop operation")
+        self.stop_requested = True
+        self.stop_action.setEnabled(False)
+        
+        if self.scrape_thread and self.scrape_thread.isRunning():
+            logger.debug("Stopping scrape thread...")
+            self.scrape_thread.stop_scraping()
+            self.set_status_message("Stopping scraping operation...")
+            
+        if self.download_thread and self.download_thread.isRunning():
+            logger.debug("Stopping download thread...")
+            self.download_thread.stop_downloading()
+            self.set_status_message("Stopping downloads (waiting for active downloads to complete)...")
+
+    def refresh_table_with_sort(self):
+        """Refresh table while maintaining current sort order"""
+        logger.debug("refresh_table_with_sort: Refreshing table with current sort state")
+        
+        # Store current selection if any
+        selected_rows = []
+        selection_model = self.table_view.selectionModel()
+        if selection_model:
+            for index in selection_model.selectedRows():
+                song_id_item = self.table_model.item(index.row(), 2)  # Song ID column
+                if song_id_item:
+                    selected_rows.append(song_id_item.text())
+        
+        # Reload data
+        self.load_table_view_data()
+        
+        # Restore sort order
+        self.table_view.sortByColumn(self.current_sort_column, self.current_sort_order)
+        
+        # Try to restore selection
+        if selected_rows:
+            selection_model = self.table_view.selectionModel()
+            for row in range(self.table_model.rowCount()):
+                song_id_item = self.table_model.item(row, 2)
+                if song_id_item and song_id_item.text() in selected_rows:
+                    selection_model.select(song_id_item.index(), selection_model.SelectionFlag.Select | selection_model.SelectionFlag.Rows)
+
+    def on_song_download_completed(self, song_id):
+        """Handle individual song download completion"""
+        logger.debug(f"Song download completed: {song_id}")
+        # Refresh table to show updated download status
+        QTimer.singleShot(100, self.refresh_table_with_sort)  # Small delay to ensure DB is updated
 
     def check_internet_before_operation(self):
         if not self.is_internet_available():
