@@ -50,83 +50,129 @@ class SongDownloader(QObject):
         logger.error(f"Failed to retrieve direct download URL after {max_retries} attempts: {download_url}")
         return None
 
-    def download_song(self, song, unzip_songs = False, delete_zip = False):
-        """Downloads a single song, potentially unzips, and removes the .zip if required."""
-        song_id = song ['song_id']
+    def download_song(self, song, unzip_songs=False, delete_zip=False):
+        """Downloads a single song with enhanced retry logic and progress tracking."""
+        song_id = song['song_id']
         max_retries = 5
-        backoff_factor = 1
         song_file_paths = []
 
-        file_name = sanitize_filename(song ['artist'], song ['title'], song ['song_id'])
-        file_path = self.download_dir / file_name  # No zip extension here
+        file_name = sanitize_filename(song['artist'], song['title'], song['song_id'])
+        file_path = self.download_dir / f"{file_name}.zip"  # Ensure .zip extension
 
-        if file_path.exists():  # Check if file already exists.  Use pathlib
-            logger.info(f"Zip file already exists, skipping download: {song ['title']} ({song_id})")
-            song ["file_path"] = [file_name]  # Store just the filename
-            song ["downloaded"] = 1  # Mark as downloaded
+        # Check if file already exists
+        if file_path.exists() and self.verify_zip_file(file_path, song):
+            logger.info(f"File already exists and is valid: {song['title']} ({song_id})")
+            song["file_path"] = [file_path.name]
+            song["downloaded"] = 1
             self.download_finished.emit(song_id)
-            return  # Exit download_song early
+            return
+
+        # Clean up any corrupted partial downloads
+        if file_path.exists():
+            file_path.unlink()
 
         for attempt in range(1, max_retries + 1):
             try:
+                # Get direct download URL with retry
                 real_download_url = self.get_direct_download_url(
-                    'https://www.karaoke-version.com' + song ["download_url"])
+                    'https://www.karaoke-version.com' + song["download_url"], max_retries=3)
+                
                 if not real_download_url:
-                    raise Exception("Failed to get real download URL")  # More specific exception
+                    raise Exception("Failed to get direct download URL after retries")
 
-                response = self.session.get(real_download_url, stream=True)
-                if response.status_code != 200:
-                    raise Exception(f"HTTP Error: {response.status_code}")
+                # Start download with proper headers
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate'
+                }
+                
+                response = self.session.get(real_download_url, stream=True, headers=headers, timeout=30)
+                response.raise_for_status()
 
                 total_length = response.headers.get('content-length')
                 total_length = int(total_length) if total_length else None
                 downloaded_length = 0
+                start_time = time.time()
 
-                with file_path.open('wb') as file:  # Use pathlib's .open() method.
-                    for chunk in response.iter_content(chunk_size=8192):  # Increased chunk size
+                # Create temporary file for atomic operation
+                temp_file = file_path.with_suffix('.tmp')
+                
+                with temp_file.open('wb') as file:
+                    for chunk in response.iter_content(chunk_size=16384):  # Larger chunk size
                         if chunk:
                             file.write(chunk)
                             downloaded_length += len(chunk)
+                            
                             if total_length:
-                                progress_percent = int(downloaded_length / total_length * 100)
+                                progress_percent = min(int(downloaded_length / total_length * 100), 100)
+                                
+                                # Calculate ETA
+                                elapsed_time = time.time() - start_time
+                                if elapsed_time > 0 and downloaded_length > 0:
+                                    speed = downloaded_length / elapsed_time
+                                    remaining_bytes = total_length - downloaded_length
+                                    eta_seconds = remaining_bytes / speed if speed > 0 else 0
+                                    eta_text = f" (ETA: {int(eta_seconds)}s)" if eta_seconds > 1 else ""
+                                else:
+                                    eta_text = ""
+                                    
                                 self.download_progress.emit(song_id, progress_percent)
 
-                song_file_paths = [file_name]  # store only the filename
+                # Atomic move to final location
+                temp_file.rename(file_path)
+                
+                # Verify download integrity
+                if not self.verify_zip_file(file_path, song):
+                    raise Exception("Downloaded file failed integrity check")
 
-                if unzip_songs and file_path.suffix == ".zip":
-                    extracted_files = self.handle_zip_extraction(file_path, song_id, delete_zip)
-                    song_file_paths = extracted_files  # Update to extracted file paths
-                    song ["extracted"] = 1
+                song_file_paths = [file_path.name]
+
+                # Handle extraction if requested
+                if unzip_songs:
+                    try:
+                        extracted_files = self.handle_zip_extraction(file_path, song_id, delete_zip)
+                        song_file_paths = extracted_files
+                        song["extracted"] = 1
+                    except Exception as e:
+                        logger.error(f"Extraction failed for {song['title']}: {e}")
+                        song["extracted"] = 0
                 else:
-                    song ["extracted"] = 0  # Ensure extracted is set to 0 if not unzipped
+                    song["extracted"] = 0
 
-                song ["file_path"] = song_file_paths  # Just the filenames
-                song ["downloaded"] = 1
+                song["file_path"] = song_file_paths
+                song["downloaded"] = 1
+                song["download_size"] = downloaded_length
+                song["download_time"] = time.time() - start_time
 
-                if not self.verify_zip_file(file_path, song):  # Verify zip integrity after download
-                    logger.error(f"Zip file verification failed for: {song ['title']} ({song_id})")
-                    song ["downloaded"] = 0  # Mark as not downloaded if verification fails
-                    self.download_failed.emit(song_id, "Zip file verification failed.")
-                    return  # Stop processing if zip is corrupt
-
+                logger.info(f"Successfully downloaded: {song['title']} ({song_id}) - {downloaded_length} bytes")
                 self.download_finished.emit(song_id)
                 return
 
-            except requests.RequestException as e:
-                logger.error(f"Download attempt {attempt} failed for {song ['title']}: {e}")
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Network error on attempt {attempt} for {song['title']}: {e}")
+                
+            except Exception as e:
+                logger.warning(f"Download attempt {attempt} failed for {song['title']}: {e}")
+                
+                # Clean up partial download
+                if file_path.exists():
+                    file_path.unlink()
+                temp_file = file_path.with_suffix('.tmp')
+                if temp_file.exists():
+                    temp_file.unlink()
 
-                if attempt == max_retries:
-                    self.download_failed.emit(song_id, str(e))
+            # Don't retry on final attempt
+            if attempt < max_retries:
+                sleep_time = min(2 ** (attempt - 1) + random.uniform(0, 1), 30)  # Cap at 30 seconds
+                logger.info(f"Retrying download of {song['title']} in {sleep_time:.1f} seconds...")
+                time.sleep(sleep_time)
 
-            except Exception as e:  # Catch all exceptions
-                logger.error(f"Attempt {attempt} failed for {song ['title']}: {e}")
-                # Send the exception to Sentry
-                if attempt == max_retries:
-                    logger.error(f"Max retries reached for song: {song ['title']}")
-                    self.download_failed.emit(song_id, str(e))
-                else:
-                    sleep_time = backoff_factor * (2 ** (attempt - 1)) + random.uniform(0, 1)
-                    time.sleep(sleep_time)
+        # All attempts failed
+        logger.error(f"Failed to download {song['title']} after {max_retries} attempts")
+        song["downloaded"] = 0
+        self.download_failed.emit(song_id, f"Download failed after {max_retries} attempts")
 
     def handle_zip_extraction(self, zip_file_path, song_id, delete_zip = False):
         """Unzips the downloaded file, renames extracted MP3/CDG files, and optionally deletes the .zip."""

@@ -88,27 +88,49 @@ class DatabaseManager:
             raise  # Always re-raise after capturing
 
     def save_song(self, song):
-        """Save a new song to the database."""
-        logger.debug(f"Saving new song to database: {song}")
+        """Save a new song to the database with validation."""
+        if not song or not song.get("song_id"):
+            raise ValueError("Song data is missing or invalid")
+            
+        logger.debug(f"Saving new song to database: {song['song_id']}")
         try:
-            with self._get_connection() as conn:  # Use context manager
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Validate required fields
+                required_fields = ["song_id", "artist", "title"]
+                for field in required_fields:
+                    if not song.get(field):
+                        logger.warning(f"Missing required field '{field}' for song {song.get('song_id')}")
+                        song[field] = song.get(field, "Unknown")
+
                 file_paths = song.get("file_path", "")
                 if isinstance(file_paths, str):
                     file_paths = [file_paths] if file_paths else []
 
                 cursor.execute('''
-                    INSERT OR IGNORE INTO purchased_songs (
+                    INSERT OR REPLACE INTO purchased_songs (
                         song_id, artist, artist_url, title, title_url,
                         order_date, download_url, file_path, downloaded, extracted
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (song ["song_id"], song ["artist"], song ["artist_url"], song ["title"], song ["title_url"],
-                      song ["order_date"], song ["download_url"], json.dumps(file_paths), song.get("downloaded", 0),
-                      song.get("extracted", 0)))
+                ''', (
+                    song["song_id"], 
+                    song.get("artist", "Unknown"), 
+                    song.get("artist_url", ""), 
+                    song.get("title", "Unknown"), 
+                    song.get("title_url", ""),
+                    song.get("order_date"), 
+                    song.get("download_url", ""), 
+                    json.dumps(file_paths), 
+                    song.get("downloaded", 0),
+                    song.get("extracted", 0)
+                ))
                 conn.commit()
+                logger.debug(f"Successfully saved song: {song['song_id']}")
+                
         except Exception as e:
-            logger.exception(f"Failed to save song {song.get('song_id', 'Unknown ID')}")
-            raise  # Always re-raise after capturing
+            logger.exception(f"Failed to save song {song.get('song_id', 'Unknown ID')}: {e}")
+            raise
 
     def update_song(self, song):
         """Update an existing song in the database."""
@@ -277,7 +299,77 @@ class DatabaseManager:
 
     def get_total_song_count(self):
         """Gets the total count of songs in the purchased_songs table."""
-        with self._get_connection() as conn:  # Use context manager
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM purchased_songs")
-            return cursor.fetchone() [0]
+            return cursor.fetchone()[0]
+
+    def validate_database_integrity(self):
+        """Validate database integrity and return a report."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Check for orphaned records
+                cursor.execute("SELECT COUNT(*) FROM purchased_songs WHERE song_id IS NULL OR song_id = ''")
+                invalid_ids = cursor.fetchone()[0]
+                
+                # Check for duplicate song IDs
+                cursor.execute("""
+                    SELECT song_id, COUNT(*) as count 
+                    FROM purchased_songs 
+                    GROUP BY song_id 
+                    HAVING COUNT(*) > 1
+                """)
+                duplicates = cursor.fetchall()
+                
+                # Check for songs marked as downloaded but missing file paths
+                cursor.execute("""
+                    SELECT COUNT(*) FROM purchased_songs 
+                    WHERE downloaded = 1 AND (file_path IS NULL OR file_path = '' OR file_path = '[]')
+                """)
+                missing_paths = cursor.fetchone()[0]
+                
+                total_songs = self.get_total_song_count()
+                
+                report = {
+                    "total_songs": total_songs,
+                    "invalid_ids": invalid_ids,
+                    "duplicates": len(duplicates),
+                    "missing_file_paths": missing_paths,
+                    "is_healthy": invalid_ids == 0 and len(duplicates) == 0
+                }
+                
+                logger.info(f"Database integrity check: {report}")
+                return report
+                
+        except Exception as e:
+            logger.exception("Failed to validate database integrity")
+            return {"error": str(e), "is_healthy": False}
+
+    def cleanup_database(self):
+        """Clean up database inconsistencies."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Remove records with invalid song IDs
+                cursor.execute("DELETE FROM purchased_songs WHERE song_id IS NULL OR song_id = ''")
+                removed_invalid = cursor.rowcount
+                
+                # Fix songs marked as downloaded but missing file paths
+                cursor.execute("""
+                    UPDATE purchased_songs 
+                    SET downloaded = 0, file_path = '[]' 
+                    WHERE downloaded = 1 AND (file_path IS NULL OR file_path = '' OR file_path = '[]')
+                """)
+                fixed_paths = cursor.rowcount
+                
+                conn.commit()
+                
+                logger.info(f"Database cleanup: removed {removed_invalid} invalid records, fixed {fixed_paths} path issues")
+                return {"removed_invalid": removed_invalid, "fixed_paths": fixed_paths}
+                
+        except Exception as e:
+            logger.exception("Failed to cleanup database")
+            raise

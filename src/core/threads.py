@@ -1,10 +1,28 @@
 # src/threads.py
 import logging
+import random
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from zipfile import BadZipFile, ZipFile
+from datetime import datetime
 
-from PyQt6.QtCore import QThread, pyqtSignal
+import requests
+from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
-from .utils import standardize_date
+from src.core.utils import sanitize_filename
+
+def standardize_date(date_str):
+    """Standardize date format to YYYY-MM-DD."""
+    if not date_str:
+        return None
+    try:
+        # Assume MM/DD/YY format from scraper
+        return datetime.strptime(date_str, '%m/%d/%y').strftime('%Y-%m-%d')
+    except ValueError as e:
+        logging.getLogger('vibe_manager').error(f"Failed to parse date: {date_str}")
+        return None
 
 logger = logging.getLogger('vibe_manager') # Use the main logger
 
@@ -88,33 +106,60 @@ class DownloadThread(QThread):
             total_songs = len(self.songs)
             logger.debug(f"Starting DownloadThread for {total_songs} songs.")
 
+            start_time = time.time() # Record start time for ETA calculation
 
             def download_and_update(song):
                 if self.stop_downloading_flag: # Check stop flag inside download_and_update
                     return # Stop processing this song if stop requested
 
                 if song["downloaded"] == 0:
-                    try:
-                        self.downloader.download_song(song, self.unzip_songs, self.delete_zip)
-                        # Mark as downloaded in DB
-                        song["downloaded"] = 1
-                        self.downloaded_song_count += 1 # Increment instance attribute
-                        self.db_manager.update_song(song) # Update song in our DB
-
-                    except Exception as e:
-                        logger.error(f"Download error: {e}")
-                        self.error.emit(str(e))
+                    retries = 3 # Number of retries
+                    for attempt in range(retries):
+                        try:
+                            self.downloader.download_song(song, self.unzip_songs, self.delete_zip)
+                            # Mark as downloaded in DB
+                            song["downloaded"] = 1
+                            self.downloaded_song_count += 1 # Increment instance attribute
+                            self.db_manager.update_song(song) # Update song in our DB
+                            return # Exit retry loop on success
+                        except (BadZipFile, requests.exceptions.RequestException, Exception) as e:
+                            logger.warning(f"Attempt {attempt + 1}/{retries} failed for song {song['title']} with error: {e}")
+                            if attempt < retries - 1:
+                                time.sleep(random.uniform(1, 5)) # Wait before retrying
+                            else:
+                                logger.error(f"Download failed for song {song['title']} after {retries} attempts: {e}")
+                                self.error.emit(f"Failed to download {song['title']}: {e}")
+                                # Mark as failed in DB if needed, or leave as is to retry later
 
             with ThreadPoolExecutor(max_workers=self.downloader.max_concurrent_downloads) as executor:
+                futures = []
                 for idx, song in enumerate(self.songs):
                     if self.stop_downloading_flag: # Check stop flag before submitting each song
                         logger.info("Downloads stopped by user request.")
                         self.progress.emit(100, "Downloads stopped.") # Indicate stopped status
                         return # Exit run method
 
-                    executor.submit(download_and_update, song)
-                    progress_val = int((idx + 1) / total_songs * 100)
-                    self.progress.emit(progress_val, f"Downloading song: {song['title']}")
+                    if song["downloaded"] == 0:
+                        futures.append(executor.submit(download_and_update, song))
+
+                    elapsed_time = time.time() - start_time
+                    progress_percentage = int((idx + 1) / total_songs * 100) if total_songs > 0 else 0
+
+                    # ETA Calculation
+                    if elapsed_time > 0 and idx + 1 > 0:
+                        speed = (idx + 1) / elapsed_time
+                        remaining_songs = total_songs - (idx + 1)
+                        eta_seconds = remaining_songs / speed if speed > 0 else 0
+                        eta_time = datetime.fromtimestamp(time.time() + eta_seconds).strftime('%H:%M:%S')
+                        eta_message = f"ETA: {eta_time}"
+                    else:
+                        eta_message = "ETA: --:--:--"
+
+                    self.progress.emit(progress_percentage, f"Processing song {idx + 1}/{total_songs}: {song['title']} ({eta_message})")
+
+                # Wait for all futures to complete
+                for future in futures:
+                    future.result() # This will re-raise exceptions if any occurred
 
             self.progress.emit(100, f"All downloads completed. Downloaded {self.downloaded_song_count} songs.") # Access instance attribute
             self.finished.emit()
