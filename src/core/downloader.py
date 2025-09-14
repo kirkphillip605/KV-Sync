@@ -58,7 +58,7 @@ class SongDownloader(QObject):
         song_file_paths = []
 
         file_name = sanitize_filename(song['artist'], song['title'], song['song_id'])
-        file_path = self.download_dir / f"{file_name}.zip"  # Ensure .zip extension
+        file_path = self.download_dir / file_name  # Extension already included by sanitize_filename
 
         # Check if file already exists
         if file_path.exists() and self.verify_zip_file(file_path, song):
