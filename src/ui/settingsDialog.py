@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QF
                              QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox, QTabWidget,
                              QVBoxLayout, QWidget)
 from src.ui.splashManager import splash_manager
+from src.core.date_utils import get_available_display_formats
 
 
 logger = logging.getLogger(__name__)
@@ -57,12 +58,16 @@ class SettingsDialog(QDialog):
         self.log_level_tab = self.create_tab(
             "Choose the desired log level and maximum number of logfiles to save. If you are unsure what to choose, set Log Level to 'INFO' and max logs to '10'",
             self.create_log_level_layout())
+        self.display_tab = self.create_tab(
+            "Choose how dates should be displayed throughout the application. This affects how purchase dates are shown in the song list.",
+            self.create_display_layout())
 
         # Add tabs to the tab widget
         self.tabs.addTab(self.credentials_tab, "Karaoke-Version")
         self.tabs.addTab(self.storage_tab, "File Handling")
         self.tabs.addTab(self.openkj_tab, "OpenKJ DB")
         self.tabs.addTab(self.log_level_tab, "Logging")
+        self.tabs.addTab(self.display_tab, "Display")
 
         self.main_layout.addWidget(tabs_frame)  # Add the tabs wrapped in a frame
 
@@ -215,6 +220,24 @@ class SettingsDialog(QDialog):
         layout.addStretch()  # Push to the left
         return layout
 
+    def create_display_layout(self):
+        """Create layout for display settings including date format preference."""
+        layout = QHBoxLayout()
+        self.date_format_label = QLabel("Date Format:")
+        self.date_format_combo = QComboBox(self)
+        
+        # Populate with available formats
+        available_formats = get_available_display_formats()
+        for format_key, format_description in available_formats:
+            self.date_format_combo.addItem(format_description, format_key)
+        
+        self.date_format_combo.setMinimumWidth(200)
+        
+        layout.addWidget(self.date_format_label)
+        layout.addWidget(self.date_format_combo)
+        layout.addStretch()  # Push to the left
+        return layout
+
     def update_polling_time_display(self):
         seconds = self.polling_time_input.value()
         minutes = seconds // 60
@@ -258,6 +281,16 @@ class SettingsDialog(QDialog):
             config.getboolean("Settings", "auto_add_openkj", fallback=False))  # Load new setting
         self.log_level_combo.setCurrentText(config.get("Logging", "log_level", fallback="INFO"))
         self.max_logs_input.setValue(config.getint("Logging", "max_logs", fallback=10))
+        
+        # Load date format preference
+        if not config.has_section("Display"):
+            config.add_section("Display")
+        date_format = config.get("Display", "date_format", fallback="yyyy-MM-dd")
+        index = self.date_format_combo.findData(date_format)
+        if index >= 0:
+            self.date_format_combo.setCurrentIndex(index)
+        else:
+            self.date_format_combo.setCurrentIndex(0)  # Default to first option
 
     def check_required_fields(self):
         """Check if all required fields are filled in and highlight tabs if any are missing."""
@@ -359,6 +392,11 @@ class SettingsDialog(QDialog):
         config.set("Settings", "auto_add_openkj", str(self.auto_add_openkj_checkbox.isChecked()))  # added
         config.set("Settings", "log_level", self.log_level_combo.currentText().lower())  # save log level
         config.set("Settings", "max_logs", str(self.max_logs_input.value()))
+        
+        # Save date format preference
+        if not config.has_section("Display"):
+            config.add_section("Display")
+        config.set("Display", "date_format", self.date_format_combo.currentData())
 
         self.config_manager.save_config()
         self.accept()

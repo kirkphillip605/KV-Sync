@@ -1,9 +1,11 @@
 # src/core/scraper.py
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from bs4 import BeautifulSoup
+from src.core.date_utils import intelligent_date_parse
 
 logger = logging.getLogger('vibe_manager')  # Use the main logger
 
@@ -107,7 +109,7 @@ class SongScraper:
         
         artist_anchor = artist_td.find("a")
         artist_url = artist_anchor.get("href") if artist_anchor else None
-        date = self.parse_date(date_td.text.strip()) if date_td else None
+        date = intelligent_date_parse(date_td.text.strip()) if date_td else None
 
         download_link_anchor = song_row.find("a", {"class": "my-downloaded-files__action"})
         if not download_link_anchor:
@@ -197,11 +199,3 @@ class SongScraper:
         logger.info(f"Scraping completed: {len(all_songs)} songs found, {len(failed_pages)} pages failed")
         return all_songs
 
-    def parse_date(self, date_str):
-        """Parses a date string from the website format (MM/DD/YY) to YYYY-MM-DD format."""
-        try:
-            return datetime.strptime(date_str, '%m/%d/%y').strftime('%Y-%m-%d')
-        except ValueError as e:
-
-            logger.error(f"Failed to parse date: {date_str}")
-            return None

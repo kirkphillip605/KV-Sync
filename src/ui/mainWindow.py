@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdi
 from src.core.downloader import SongDownloader
 from src.core.scraper import SongScraper
 from src.core.threads import DownloadThread, ScrapeThread
+from src.core.date_utils import format_date_for_display
 from src.ui.settingsDialog import SettingsDialog
 
 
@@ -355,7 +356,15 @@ class MainWindow(QMainWindow):
             song_id = QStandardItem(song [0])
             song_id.setEditable(False)
 
-            purchase_date = QStandardItem(song [5])
+            # Format the purchase date according to user preference
+            raw_date = song[5]  # ISO format from database
+            config = self.config_manager.get_config()
+            if not config.has_section("Display"):
+                config.add_section("Display")
+            date_format = config.get("Display", "date_format", fallback="yyyy-MM-dd")
+            formatted_date = format_date_for_display(raw_date, date_format) if raw_date else ""
+            
+            purchase_date = QStandardItem(formatted_date)
             purchase_date.setEditable(False)
 
             downloaded_item = QStandardItem()

@@ -12,17 +12,7 @@ import requests
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
 from src.core.utils import sanitize_filename
-
-def standardize_date(date_str):
-    """Standardize date format to YYYY-MM-DD."""
-    if not date_str:
-        return None
-    try:
-        # Assume MM/DD/YY format from scraper
-        return datetime.strptime(date_str, '%m/%d/%y').strftime('%Y-%m-%d')
-    except ValueError as e:
-        logging.getLogger('vibe_manager').error(f"Failed to parse date: {date_str}")
-        return None
+from src.core.date_utils import standardize_date
 
 logger = logging.getLogger('vibe_manager') # Use the main logger
 
