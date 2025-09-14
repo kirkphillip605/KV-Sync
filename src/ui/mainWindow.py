@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime
 
 import requests
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QTimer, Qt, QDate
 from PyQt6.QtGui import QAction, QFont, QIcon, QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
                              QProgressBar, QSizePolicy, QStatusBar, QSystemTrayIcon, QTabWidget, QTableView, QToolBar,
@@ -21,6 +21,40 @@ from src.ui.settingsDialog import SettingsDialog
 
 
 logger = logging.getLogger('vibe_manager')  # Use the main logger
+
+
+class DateStandardItem(QStandardItem):
+    """Custom QStandardItem that stores QDate objects for proper chronological sorting."""
+    
+    def __init__(self, iso_date_str, display_text):
+        super().__init__(display_text)
+        self.setEditable(False)
+        
+        # Store the QDate object for sorting
+        if iso_date_str and iso_date_str.strip():
+            try:
+                # Parse ISO date string (YYYY-MM-DD) to QDate
+                year, month, day = map(int, iso_date_str.split('-'))
+                self._date = QDate(year, month, day)
+            except (ValueError, AttributeError):
+                logger.warning(f"Failed to parse ISO date: {iso_date_str}")
+                self._date = QDate()  # Invalid date for sorting purposes
+        else:
+            self._date = QDate()  # Invalid date for sorting purposes
+    
+    def __lt__(self, other):
+        """Override less than comparison for proper sorting."""
+        if isinstance(other, DateStandardItem):
+            # Compare QDate objects for chronological sorting
+            if not self._date.isValid() and not other._date.isValid():
+                return False  # Both invalid, consider equal
+            elif not self._date.isValid():
+                return True   # Invalid dates sort before valid ones
+            elif not other._date.isValid():
+                return False  # Valid dates sort after invalid ones
+            else:
+                return self._date < other._date
+        return super().__lt__(other)
 
 class AlternateRowDelegate:
     """Minimal delegate to alternate background colors (optional)."""
@@ -356,7 +390,7 @@ class MainWindow(QMainWindow):
             song_id = QStandardItem(song [0])
             song_id.setEditable(False)
 
-            # Format the purchase date according to user preference
+            # Format the purchase date according to user preference and create DateStandardItem
             raw_date = song[5]  # ISO format from database
             config = self.config_manager.get_config()
             if not config.has_section("Display"):
@@ -364,8 +398,8 @@ class MainWindow(QMainWindow):
             date_format = config.get("Display", "date_format", fallback="yyyy-MM-dd")
             formatted_date = format_date_for_display(raw_date, date_format) if raw_date else ""
             
-            purchase_date = QStandardItem(formatted_date)
-            purchase_date.setEditable(False)
+            # Use DateStandardItem for proper chronological sorting
+            purchase_date = DateStandardItem(raw_date, formatted_date)
 
             downloaded_item = QStandardItem()
             downloaded_item.setEditable(False)
@@ -380,6 +414,7 @@ class MainWindow(QMainWindow):
 
         self.table_view.setModel(self.table_model)
         self.table_view.setSortingEnabled(True)
+        # Set default sort to reverse chronological (most recent purchases first)
         self.table_view.sortByColumn(3, Qt.SortOrder.DescendingOrder)
         
         # Store current sort state
