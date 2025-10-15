@@ -72,7 +72,16 @@ class MainWindow(QMainWindow):
         logger.debug("MainWindow: Initializing...")
         super().__init__()
         self.setWindowTitle("Vibe SongSync - Purchased Karaoke Track Manager")
-        main_icon = QIcon("resources/main.png")
+        
+        # Use platform-appropriate icon with fallback
+        import platform
+        icon_path = "resources/main.ico" if platform.system() == "Windows" else "resources/main.png"
+        main_icon = QIcon(icon_path)
+        if main_icon.isNull():
+            logger.warning(f"Failed to load window icon from {icon_path}, trying fallback...")
+            main_icon = QIcon("resources/main.png")
+            if main_icon.isNull():
+                logger.error("Failed to load window icon")
         self.setWindowIcon(main_icon)
         self.resize(1000, 700)
 
