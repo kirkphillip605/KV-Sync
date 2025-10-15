@@ -81,7 +81,17 @@ def main():
 
     try:
         app = QApplication(sys.argv)
-        app.setWindowIcon(QIcon("resources/main.ico"))
+        
+        # Use platform-appropriate icon with fallback
+        import platform
+        icon_path = "resources/main.ico" if platform.system() == "Windows" else "resources/main.png"
+        app_icon = QIcon(icon_path)
+        if app_icon.isNull():
+            logger.warning(f"Failed to load icon from {icon_path}, trying fallback...")
+            app_icon = QIcon("resources/main.png")
+            if app_icon.isNull():
+                logger.error("Failed to load application icon")
+        app.setWindowIcon(app_icon)
 
         with open("resources/styles/styles.qss", "r") as stylesheet:
             app.setStyleSheet(stylesheet.read())
