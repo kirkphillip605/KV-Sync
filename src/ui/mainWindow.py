@@ -18,6 +18,7 @@ from src.core.scraper import SongScraper
 from src.core.threads import DownloadThread, ScrapeThread
 from src.core.date_utils import format_date_for_display
 from src.ui.settingsDialog import SettingsDialog
+from src.ui.currentDownloadsDialog import CurrentDownloadsDialog
 
 
 logger = logging.getLogger('vibe_manager')  # Use the main logger
@@ -624,6 +625,13 @@ class MainWindow(QMainWindow):
         # Connect individual download completion to table refresh
         self.downloader.song_download_completed.connect(self.on_song_download_completed)
         
+        # Show the Current Downloads dialog
+        if not hasattr(self, 'current_downloads_dialog') or not self.current_downloads_dialog.isVisible():
+            self.current_downloads_dialog = CurrentDownloadsDialog(self)
+        self.current_downloads_dialog.show()
+        self.current_downloads_dialog.raise_()
+        self.current_downloads_dialog.activateWindow()
+        
         self.download_thread = DownloadThread(
             song_dicts,  # Pass the list of dictionaries
             self.downloader,
@@ -635,6 +643,20 @@ class MainWindow(QMainWindow):
         self.download_thread.progress.connect(self.update_operation_progress)
         self.download_thread.finished.connect(lambda: self.download_finished(log_id=log_id))  # Pass log_id
         self.download_thread.error.connect(self.handle_error)
+        
+        # Connect download thread signals to the Current Downloads dialog
+        self.download_thread.song_started.connect(self.current_downloads_dialog.add_download_from_thread)
+        self.download_thread.song_progress.connect(self.current_downloads_dialog.update_progress)
+        self.download_thread.song_finished.connect(self.current_downloads_dialog.download_finished)
+        self.download_thread.song_failed.connect(self.current_downloads_dialog.download_failed)
+        
+        # Also connect the downloader's signals for progress updates
+        self.downloader.download_progress.connect(
+            lambda sid, prog: self.current_downloads_dialog.update_progress(sid, prog, "-- KB/sec")
+        )
+        self.downloader.download_finished.connect(self.current_downloads_dialog.download_finished)
+        self.downloader.download_failed.connect(self.current_downloads_dialog.download_failed)
+        
         self.download_thread.start()
         logger.debug("download_new_tracks: Download thread started.")
 

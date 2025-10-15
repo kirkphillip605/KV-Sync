@@ -122,8 +122,9 @@ class CurrentDownloadsDialog(QDialog):
         self.setMinimumSize(800, 400)
         self.setModal(False)  # Allow interaction with main window
         
-        # Store active download threads
+        # Store active download threads and completed downloads
         self.active_downloads = {}  # song_id -> (thread, row_index)
+        self.completed_downloads = set()  # Set of song_ids that are completed
         
         layout = QVBoxLayout(self)
         
@@ -145,6 +146,18 @@ class CurrentDownloadsDialog(QDialog):
         self.downloads_table.setColumnWidth(2, 150)  # Progress column width
         
         layout.addWidget(self.downloads_table)
+        
+        # Add button container at the bottom
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        # Clear Completed button
+        self.clear_completed_button = QPushButton("Clear Completed")
+        self.clear_completed_button.clicked.connect(self.clear_completed_downloads)
+        self.clear_completed_button.setEnabled(False)  # Disabled until there are completed downloads
+        button_layout.addWidget(self.clear_completed_button)
+        
+        layout.addLayout(button_layout)
         
         logger.debug("CurrentDownloadsDialog: Initialized")
     
@@ -206,6 +219,54 @@ class CurrentDownloadsDialog(QDialog):
         thread.start()
         logger.debug(f"Started download for song {song_id} at row {row}")
     
+    def add_download_from_thread(self, song):
+        """Add a song to the display (for bulk downloads from DownloadThread)"""
+        song_id = song['song_id']
+        
+        # Check if already in the table
+        if song_id in self.active_downloads or song_id in self.completed_downloads:
+            logger.debug(f"Song {song_id} is already in the downloads table")
+            return
+        
+        # Add row to table
+        row = self.downloads_table.rowCount()
+        self.downloads_table.insertRow(row)
+        
+        # Song title
+        self.downloads_table.setItem(row, 0, QTableWidgetItem(song.get('title', 'Unknown')))
+        
+        # Artist
+        self.downloads_table.setItem(row, 1, QTableWidgetItem(song.get('artist', 'Unknown')))
+        
+        # Progress bar
+        progress_widget = QWidget()
+        progress_layout = QVBoxLayout(progress_widget)
+        progress_layout.setContentsMargins(2, 2, 2, 2)
+        progress_bar = QProgressBar()
+        progress_bar.setMaximum(100)
+        progress_bar.setValue(0)
+        progress_layout.addWidget(progress_bar)
+        self.downloads_table.setCellWidget(row, 2, progress_widget)
+        
+        # Speed
+        self.downloads_table.setItem(row, 3, QTableWidgetItem("-- KB/sec"))
+        
+        # Status
+        self.downloads_table.setItem(row, 4, QTableWidgetItem("Downloading..."))
+        
+        # Action button (initially empty)
+        action_widget = QWidget()
+        self.downloads_table.setCellWidget(row, 5, action_widget)
+        
+        # Store download info (without thread since it's handled by DownloadThread)
+        self.active_downloads[song_id] = {
+            'thread': None,
+            'row': row,
+            'song': song
+        }
+        
+        logger.debug(f"Added song {song_id} to downloads display at row {row}")
+    
     def update_progress(self, song_id, progress_percent, speed):
         """Update progress for a specific download"""
         if song_id not in self.active_downloads:
@@ -233,17 +294,27 @@ class CurrentDownloadsDialog(QDialog):
             
         row = self.active_downloads[song_id]['row']
         
+        # Update progress bar to 100%
+        progress_widget = self.downloads_table.cellWidget(row, 2)
+        if progress_widget:
+            progress_bar = progress_widget.findChild(QProgressBar)
+            if progress_bar:
+                progress_bar.setValue(100)
+                progress_bar.setFormat("100%")
+        
         # Update status
         status_item = self.downloads_table.item(row, 4)
         if status_item:
             status_item.setText("Completed")
         
+        # Mark as completed (keep the row visible)
+        self.completed_downloads.add(song_id)
+        
         # Remove from active downloads
         del self.active_downloads[song_id]
         
-        # Remove the row after a short delay
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(2000, lambda: self.remove_completed_row(song_id, row))
+        # Enable the Clear Completed button
+        self.clear_completed_button.setEnabled(True)
         
         logger.debug(f"Download completed for song {song_id}")
     
@@ -319,6 +390,33 @@ class CurrentDownloadsDialog(QDialog):
         thread.start()
         
         logger.debug(f"Retrying download for song {song_id}")
+    
+    def clear_completed_downloads(self):
+        """Remove all completed downloads from the table"""
+        # Find all rows with "Completed" status and remove them
+        rows_to_remove = []
+        for row in range(self.downloads_table.rowCount()):
+            status_item = self.downloads_table.item(row, 4)
+            if status_item and status_item.text() == "Completed":
+                rows_to_remove.append(row)
+        
+        # Remove rows in reverse order to maintain correct indices
+        for row in sorted(rows_to_remove, reverse=True):
+            self.downloads_table.removeRow(row)
+        
+        # Update row indices for remaining active downloads
+        for song_id, info in self.active_downloads.items():
+            # Count how many completed rows were before this one
+            removed_before = sum(1 for r in rows_to_remove if r < info['row'])
+            info['row'] -= removed_before
+        
+        # Clear the completed downloads set
+        self.completed_downloads.clear()
+        
+        # Disable the button
+        self.clear_completed_button.setEnabled(False)
+        
+        logger.debug(f"Cleared {len(rows_to_remove)} completed downloads")
     
     def remove_completed_row(self, song_id, row):
         """Remove a completed download row"""
