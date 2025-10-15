@@ -79,6 +79,10 @@ class DownloadThread(QThread):
     progress = pyqtSignal(int, str)  # (progress, message)
     finished = pyqtSignal()
     error = pyqtSignal(str)
+    song_started = pyqtSignal(dict)  # (song) - emitted when a song starts downloading
+    song_progress = pyqtSignal(str, int, str)  # (song_id, progress_percent, speed) - emitted during download
+    song_finished = pyqtSignal(str)  # (song_id) - emitted when a song completes
+    song_failed = pyqtSignal(str, str)  # (song_id, error_message) - emitted when a song fails
 
     def __init__(self, songs, downloader, db_manager, unzip_songs=False, delete_zip=False):
         super().__init__()
@@ -104,6 +108,9 @@ class DownloadThread(QThread):
                     return # Stop processing this song if stop requested
 
                 if song["downloaded"] == 0:
+                    # Emit signal that this song is starting
+                    self.song_started.emit(song)
+                    
                     retries = 3 # Number of retries
                     for attempt in range(retries):
                         try:
@@ -120,6 +127,7 @@ class DownloadThread(QThread):
                             else:
                                 logger.error(f"Download failed for song {song['title']} after {retries} attempts: {e}")
                                 self.error.emit(f"Failed to download {song['title']}: {e}")
+                                self.song_failed.emit(song['song_id'], str(e))
                                 # Mark as failed in DB if needed, or leave as is to retry later
 
             with ThreadPoolExecutor(max_workers=self.downloader.max_concurrent_downloads) as executor:
