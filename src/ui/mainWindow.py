@@ -7,9 +7,9 @@ import sqlite3
 from datetime import datetime
 
 import requests
-from PyQt6.QtCore import QTimer, Qt, QDate
-from PyQt6.QtGui import QAction, QFont, QIcon, QStandardItem, QStandardItemModel
-from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
+from PySide6.QtCore import QTimer, Qt, QDate
+from PySide6.QtGui import QAction, QFont, QIcon, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
                              QProgressBar, QSizePolicy, QStatusBar, QSystemTrayIcon, QTabWidget, QTableView, QToolBar,
                              QVBoxLayout, QWidget)
 

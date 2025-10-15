@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 
 import requests
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QEvent
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTableWidget, QTableWidgetItem, 
+from PySide6.QtCore import Qt, Signal, QThread, QEvent
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QProgressBar, QPushButton, QWidget, QHBoxLayout, QLabel, QApplication)
 
 from src.core.scraper import SongScraper
@@ -15,9 +15,9 @@ logger = logging.getLogger('vibe_manager')
 
 class SingleDownloadThread(QThread):
     """Thread for downloading a single song"""
-    progress = pyqtSignal(str, int, str)  # (song_id, progress_percent, speed)
-    finished = pyqtSignal(str)  # (song_id)
-    failed = pyqtSignal(str, str)  # (song_id, error_message)
+    progress = Signal(str, int, str)  # (song_id, progress_percent, speed)
+    finished = Signal(str)  # (song_id)
+    failed = Signal(str, str)  # (song_id, error_message)
     
     def __init__(self, song, session, download_dir, username, password, parent=None):
         super().__init__(parent)

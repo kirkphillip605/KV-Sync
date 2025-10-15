@@ -3,9 +3,9 @@ import logging
 import sqlite3
 
 import requests  # Import requests
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
                              QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox, QTabWidget,
                              QVBoxLayout, QWidget)
 from src.ui.splashManager import splash_manager
@@ -24,12 +24,12 @@ def create_horizontal_line():
 
 
 class SettingsDialog(QDialog):
-    credentials_validated = pyqtSignal(bool)  # pyqtpyqtSignal for credential validation status
+    credentials_validated = Signal(bool)  # Signal for credential validation status
 
     def __init__(self, parent = None):
         super().__init__(parent)
         if splash_manager:
-            splash_manager.close_splash_pyqtSignal.emit()
+            splash_manager.close_splash_signal.emit()
         self.setWindowTitle("Vibe SongSync - Configuration")
         self.setMinimumWidth(500)  # Make the dialog wider
         self.setModal(True)
@@ -83,7 +83,7 @@ class SettingsDialog(QDialog):
 
         self.load_settings()
         self.check_required_fields()  # Check on init.
-        self.credentials_validated.connect(self.handle_credentials_validated)  # Connect the pyqtSignal
+        self.credentials_validated.connect(self.handle_credentials_validated)  # Connect the Signal
 
     def create_tab(self, inst, layout):
         """Creates a tab with a section title and layout."""
@@ -315,7 +315,7 @@ class SettingsDialog(QDialog):
             self.password_input.setReadOnly(True)
             self.validate_button.hide()  # hide validate and show reset
             self.reset_button.show()
-            self.credentials_validated.emit(True)  # emit pyqtSignal if validation is successful
+            self.credentials_validated.emit(True)  # emit Signal if validation is successful
 
         try:
             # Use a session for efficiency (keeps connection alive)
@@ -333,13 +333,13 @@ class SettingsDialog(QDialog):
                     self.password_input.setReadOnly(True)
                     self.validate_button.hide()  # hide validate and show reset
                     self.reset_button.show()
-                    self.credentials_validated.emit(True)  # emit pyqtSignal if validation is successful
+                    self.credentials_validated.emit(True)  # emit Signal if validation is successful
 
         except requests.RequestException as e:
             logger.error(f"Validation request failed: {e}")
             QMessageBox.critical(self, "Authentication Exception",
                                  f"An error occurred while attempting to validate your credentials. Please try again later:<p>{e}")
-            self.credentials_validated.emit(False)  # Emit pyqtSignal
+            self.credentials_validated.emit(False)  # Emit Signal
 
     def save_settings(self):
         """Save settings to the config manager."""
