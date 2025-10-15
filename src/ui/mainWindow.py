@@ -695,23 +695,20 @@ class MainWindow(QMainWindow):
         cursor = connection.cursor()
         cursor.execute("SELECT song_id, file_path FROM purchased_songs")
         songs = cursor.fetchall()
-        connection.close()
         
         # Update downloaded status for songs that have existing files
         for song_id, file_path_json in songs:
             if file_path_json:
                 file_paths = json.loads(file_path_json) if file_path_json else []
-                # Check if any of the file paths exist
+                # Check if any of the file paths exist in the download directory
                 exists_flag = any(os.path.exists(os.path.join(self.download_dir, fp)) for fp in file_paths if file_paths)
                 if exists_flag:
                     # Mark as downloaded in the database
-                    cursor_update = connection.cursor()
-                    connection = sqlite3.connect(self.db_manager.db_path)
-                    cursor_update = connection.cursor()
-                    cursor_update.execute("UPDATE purchased_songs SET downloaded = 1 WHERE song_id = ?", (song_id,))
-                    connection.commit()
-                    connection.close()
+                    cursor.execute("UPDATE purchased_songs SET downloaded = 1 WHERE song_id = ?", (song_id,))
                     logger.debug(f"full_sync_finished: Marked song {song_id} as downloaded (file exists)")
+        
+        connection.commit()
+        connection.close()
         
         self.db_manager.update_log_operation(log_id, "success",
                                              f"Full sync completed. {synced_count} songs synced.")
@@ -720,6 +717,7 @@ class MainWindow(QMainWindow):
         
         # Now download any songs where downloaded is false
         if not self.stop_requested:
+            self.set_status_message("Song Download in Progress")
             self.download_new_tracks()
         else:
             self.end_operation("Operation stopped by user.")
