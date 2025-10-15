@@ -92,6 +92,11 @@ class ConfigManager:
         logger.debug("Loaded and decrypted config file.")
 
     def save_config(self):
+        # Ensure the directory exists before saving
+        config_dir = os.path.dirname(self.config_path)
+        if config_dir:
+            os.makedirs(config_dir, exist_ok=True)
+        
         # Save the plain config to a temporary file
         config_string = ""
         with open(self.config_path, "w", encoding="utf-8") as configfile:
