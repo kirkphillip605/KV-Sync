@@ -131,9 +131,7 @@ class MainWindow(QMainWindow):
         logger.debug("MainWindow: Initialization complete.")
 
     def init_internet_status_check(self):
-        self.internet_status_label = QLabel()  # Label for internet status icon
-        self.status_bar.addPermanentWidget(self.internet_status_label, 0)  # Add to status bar (right side)
-
+        # Reuse the internet_status_label created in init_status_bar
         self.internet_check_timer = QTimer(self)
         self.internet_check_timer.timeout.connect(self.check_internet_connection)
         self.internet_check_timer.start(60000)  # Check every 60 seconds
@@ -332,7 +330,7 @@ class MainWindow(QMainWindow):
         tray_menu.addAction(self.toggle_poll_action)
 
         check_for_purchases_action = QAction("Check for Purchases", tray_menu)
-        check_for_purchases_action.triggered.connect(self.get_new_tracks)
+        check_for_purchases_action.triggered.connect(self.fetch_new)
         tray_menu.addAction(check_for_purchases_action)
 
         settings_action = QAction("Settings", tray_menu)
@@ -386,15 +384,15 @@ class MainWindow(QMainWindow):
         missing_icon = QIcon("resources/buttons/missing.png")
 
         for song in songs:
-            artist = QStandardItem(song [1])
+            artist = QStandardItem(song[1])
             artist.setEditable(False)
             artist.setFont(bold_font)
 
-            title = QStandardItem(song [3])
+            title = QStandardItem(song[3])
             title.setEditable(False)
             title.setFont(bold_font)
 
-            song_id = QStandardItem(song [0])
+            song_id = QStandardItem(song[0])
             song_id.setEditable(False)
 
             # Format the purchase date according to user preference and create DateStandardItem
@@ -410,7 +408,7 @@ class MainWindow(QMainWindow):
 
             downloaded_item = QStandardItem()
             downloaded_item.setEditable(False)
-            if song [8]:
+            if song[8]:
                 downloaded_item.setIcon(linked_icon)
                 downloaded_item.setText("Yes")  # Optional text, can remove if only want icon
             else:
@@ -448,7 +446,7 @@ class MainWindow(QMainWindow):
         logger.debug(f"update_record_count: Record count updated to: {total_records}")
 
     def filter_table_view(self, text):
-        logger.debug("filter_table_view: Filtering table with text: {text}")
+        logger.debug(f"filter_table_view: Filtering table with text: {text}")
         text = text.lower()
         row_count = self.table_model.rowCount()
         for row in range(row_count):
@@ -578,29 +576,40 @@ class MainWindow(QMainWindow):
 
         song_dicts = []
         for song in songs:
-            file_paths = json.loads(song [7]) if song [7] else []  # File paths is at index 7
-            exists_flag = any(os.path.exists(fp) for fp in file_paths if file_paths)
+            file_paths = json.loads(song[7]) if song[7] else []  # File paths is at index 7
+            # Check existence within the configured download directory
+            exists_flag = any(os.path.exists(os.path.join(self.download_dir, fp)) for fp in file_paths)
 
             # Access elements of the 'song' tuple by *integer index*, not string key
             if exists_flag:
-                song_dict = {"song_id": song [0],  # song_id is at index 0
-                             "artist": song [1],  # artist is at index 1
-                             "artist_url": song [2],  # artist_url is at index 2
-                             "title": song [3],  # title is at index 3
-                             "title_url": song [4], "order_date": song [5], "download_url": song [6],
-                             "file_path": file_paths, # Corrected, file_paths is already a list.
-                             "downloaded": 1,  # Mark as downloaded
-                             "extracted": song [9]  # extracted is at index 9
-                             }
+                song_dict = {
+                    "song_id": song[0],  # song_id is at index 0
+                    "artist": song[1],  # artist is at index 1
+                    "artist_url": song[2],  # artist_url is at index 2
+                    "title": song[3],  # title is at index 3
+                    "title_url": song[4],
+                    "order_date": song[5],
+                    "download_url": song[6],
+                    "file_path": file_paths,  # Corrected, file_paths is already a list.
+                    "downloaded": 1,  # Mark as downloaded
+                    "extracted": song[9]  # extracted is at index 9
+                }
                 self.db_manager.update_song(song_dict)
-                logger.debug(f"download_new_tracks: Song ID {song [0]} already exists, marked as downloaded.")
+                logger.debug(f"download_new_tracks: Song ID {song[0]} already exists, marked as downloaded.")
 
             else:
-                song_dict = {"song_id": song [0], "artist": song [1], "artist_url": song [2], "title": song [3],
-                             "title_url": song [4], "order_date": song [5], "download_url": song [6],
-                             "file_path": file_paths, "downloaded": song [8],  # downloaded flag is at index 8
-                             "extracted": song [9]
-                             }
+                song_dict = {
+                    "song_id": song[0],
+                    "artist": song[1],
+                    "artist_url": song[2],
+                    "title": song[3],
+                    "title_url": song[4],
+                    "order_date": song[5],
+                    "download_url": song[6],
+                    "file_path": file_paths,
+                    "downloaded": song[8],  # downloaded flag is at index 8
+                    "extracted": song[9]
+                }
                 song_dicts.append(song_dict)
 
         if not song_dicts:
@@ -610,14 +619,18 @@ class MainWindow(QMainWindow):
             self.end_operation("No songs to download.")
             return
 
-        self.downloader = SongDownloader(self.config_manager.get_config() ["Settings"], self.session, parent=self)
+        self.downloader = SongDownloader(self.config_manager.get_config()["Settings"], self.session, parent=self)
         
         # Connect individual download completion to table refresh
         self.downloader.song_download_completed.connect(self.on_song_download_completed)
         
-        self.download_thread = DownloadThread(song_dicts,  # Pass the list of dictionaries
-                                              self.downloader, self.db_manager, unzip_songs=self.unzip_songs,
-                                              delete_zip=self.delete_zip_after_extraction)
+        self.download_thread = DownloadThread(
+            song_dicts,  # Pass the list of dictionaries
+            self.downloader,
+            self.db_manager,
+            unzip_songs=self.unzip_songs,
+            delete_zip=self.delete_zip_after_extraction
+        )
         self.download_thread.log_id = log_id  # Attach log_id to thread
         self.download_thread.progress.connect(self.update_operation_progress)
         self.download_thread.finished.connect(lambda: self.download_finished(log_id=log_id))  # Pass log_id
