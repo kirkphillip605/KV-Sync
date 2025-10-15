@@ -57,9 +57,10 @@ class ScrapeThread(QThread):
                     if downloaded_status == 0:
                         self.db_manager.update_song(song)
 
-
+                # Emit real-time status for each song
                 progress_val = int(10 + (index / total_songs) * 90)
-                self.progress.emit(progress_val, f"Processed song: {song['title']}")
+                self.progress.emit(progress_val, f"Fetching Song: {song['title']} by {song.get('artist', 'Unknown')}")
+            
             self.progress.emit(100, "Scraping completed.")
             self.db_manager.set_newly_added_song_count(added_song_count) # Store count in DB for logging later
             self.finished.emit()
