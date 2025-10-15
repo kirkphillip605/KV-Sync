@@ -96,8 +96,12 @@ class MainWindow(QMainWindow):
         logger.debug("MainWindow: Views initialized.")
 
         self.tray_icon = QSystemTrayIcon(self)
-        self.create_tray_icon()
-        logger.debug("MainWindow: Tray icon initialized.")
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.create_tray_icon()
+            logger.debug("MainWindow: Tray icon initialized.")
+        else:
+            logger.warning("MainWindow: System tray not available on this platform.")
+            self.tray_icon = None  # Set to None if not available
 
         self.load_table_view_data()
         logger.debug("MainWindow: Table view data loaded.")
@@ -396,11 +400,14 @@ class MainWindow(QMainWindow):
         if remaining_ms > 0:
             remaining_s = int(remaining_ms / 1000)
             tooltip_text = f"Status: Polling in {remaining_s} seconds..."
-            self.tray_icon.setToolTip(tooltip_text)
+            if self.tray_icon:
+                self.tray_icon.setToolTip(tooltip_text)
         logger.debug("update_polling_tooltip: Tooltip updated.")
 
     def update_tray_tooltip(self):
         """Update tray tooltip to mirror the status bar text"""
+        if not self.tray_icon:
+            return
         status_text = self.status_label.text()
         self.tray_icon.setToolTip(f"Status: {status_text}")
         logger.debug(f"update_tray_tooltip: Tray tooltip updated to: {status_text}")
@@ -420,6 +427,9 @@ class MainWindow(QMainWindow):
 
     def update_tray_menu(self):
         """Update tray menu items based on current application state"""
+        if not self.tray_icon or not hasattr(self, 'toggle_poll_action'):
+            return
+            
         # Update polling action text
         if self.polling_enabled:
             self.toggle_poll_action.setText("Stop Polling")
@@ -852,7 +862,7 @@ class MainWindow(QMainWindow):
 
     def update_operation_progress(self, progress, message):
         # No longer updating progress bar - just update status message
-        self.status_label.setText(message)
+        self.set_status_message(message)  # Use set_status_message to also update tray tooltip
         logger.debug(f"update_operation_progress: Message: {message}")
 
     def handle_error(self, message):
@@ -879,12 +889,14 @@ class MainWindow(QMainWindow):
             self.download_thread.stop_downloading()
             logger.debug("Signaled download thread to stop")
             
-        self.tray_icon.hide()
+        if self.tray_icon:
+            self.tray_icon.hide()
         self.close()
 
     def minimize_to_tray(self):
         self.hide()
-        self.tray_icon.show()
+        if self.tray_icon:
+            self.tray_icon.show()
         self.set_status_message("Minimized")
         logger.debug("minimize_to_tray: Minimized to tray.")
 
