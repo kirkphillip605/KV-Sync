@@ -322,35 +322,68 @@ class MainWindow(QMainWindow):
 
     def create_tray_icon(self):
         logger.debug("create_tray_icon: Creating tray icon...")
-        self.tray_icon.setIcon(QIcon("resources/main.png"))
-        tray_menu = QMenu(self)  # Tray context menu
-
-        open_app_action = QAction("Open App", tray_menu)
-        open_app_action.triggered.connect(self.show)
-        tray_menu.addAction(open_app_action)
-
-        self.toggle_poll_action = QAction("Start Polling", tray_menu)
+        
+        # Use .ico for Windows, .png as fallback for other platforms
+        import platform
+        icon_path = "resources/main.ico" if platform.system() == "Windows" else "resources/main.png"
+        
+        # Fallback to .png if .ico doesn't exist or fails to load
+        icon = QIcon(icon_path)
+        if icon.isNull():
+            logger.warning(f"Failed to load icon from {icon_path}, trying fallback...")
+            icon = QIcon("resources/main.png")
+            if icon.isNull():
+                logger.error("Failed to load tray icon from both .ico and .png files")
+        
+        self.tray_icon.setIcon(icon)
+        
+        # Create tray menu
+        self.tray_menu = QMenu(self)
+        
+        # View App action (shown when app is hidden)
+        self.view_app_action = QAction("View App", self.tray_menu)
+        self.view_app_action.triggered.connect(self.show)
+        self.tray_menu.addAction(self.view_app_action)
+        
+        self.tray_menu.addSeparator()
+        
+        # Toggle Polling action (dynamic text)
+        self.toggle_poll_action = QAction("Start Polling", self.tray_menu)
         self.toggle_poll_action.triggered.connect(self.toggle_polling)
-        tray_menu.addAction(self.toggle_poll_action)
-
-        check_for_purchases_action = QAction("Check for Purchases", tray_menu)
-        check_for_purchases_action.triggered.connect(self.fetch_new)
-        tray_menu.addAction(check_for_purchases_action)
-
-        settings_action = QAction("Settings", tray_menu)
+        self.tray_menu.addAction(self.toggle_poll_action)
+        
+        # Stop Operation action (only shown during operations)
+        self.tray_stop_action = QAction("Stop Operation", self.tray_menu)
+        self.tray_stop_action.triggered.connect(self.stop_current_operation)
+        self.tray_stop_action.setVisible(False)
+        self.tray_menu.addAction(self.tray_stop_action)
+        
+        self.tray_menu.addSeparator()
+        
+        # Config/Settings action
+        settings_action = QAction("Config", self.tray_menu)
         settings_action.triggered.connect(self.open_settings)
-        tray_menu.addAction(settings_action)
-
-        quit_action = QAction("Quit", tray_menu)
+        self.tray_menu.addAction(settings_action)
+        
+        self.tray_menu.addSeparator()
+        
+        # Exit action
+        quit_action = QAction("Exit", self.tray_menu)
         quit_action.triggered.connect(self.quit_application)
-        tray_menu.addAction(quit_action)
-
-        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_menu.addAction(quit_action)
+        
+        self.tray_icon.setContextMenu(self.tray_menu)
+        
+        # Connect activated signal for left-click
+        self.tray_icon.activated.connect(self.on_tray_icon_activated)
+        
         self.tray_icon.show()
+        self.update_tray_tooltip()
         logger.debug("create_tray_icon: Tray icon created and shown.")
 
     def set_status_message(self, message):
         self.status_label.setText(message)
+        self.update_tray_tooltip()  # Update tray tooltip to mirror status bar
         logger.info(message)
 
     def update_polling_tooltip(self):
@@ -362,14 +395,46 @@ class MainWindow(QMainWindow):
         remaining_ms = self.poll_timer.remainingTime()
         if remaining_ms > 0:
             remaining_s = int(remaining_ms / 1000)
-            self.tray_icon.setToolTip(f"Polling in {remaining_s} seconds...")
+            tooltip_text = f"Status: Polling in {remaining_s} seconds..."
+            self.tray_icon.setToolTip(tooltip_text)
         logger.debug("update_polling_tooltip: Tooltip updated.")
 
     def update_tray_tooltip(self):
-        status = "Working..." if self.operation_in_progress else "Idle"
-        self.tray_icon.setToolTip(status)
-        logger.debug("update_tray_tooltip: Tray tooltip updated.")
+        """Update tray tooltip to mirror the status bar text"""
+        status_text = self.status_label.text()
+        self.tray_icon.setToolTip(f"Status: {status_text}")
+        logger.debug(f"update_tray_tooltip: Tray tooltip updated to: {status_text}")
+    
+    def on_tray_icon_activated(self, reason):
+        """Handle tray icon clicks (left and right click)"""
+        # Show context menu on both left and right click for consistency
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:  # Left click
+            # Show the main window on left click
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        elif reason == QSystemTrayIcon.ActivationReason.Context:  # Right click
+            # Context menu is shown automatically by Qt
+            pass
+        logger.debug(f"on_tray_icon_activated: Tray icon activated with reason: {reason}")
 
+    def update_tray_menu(self):
+        """Update tray menu items based on current application state"""
+        # Update polling action text
+        if self.polling_enabled:
+            self.toggle_poll_action.setText("Stop Polling")
+        else:
+            self.toggle_poll_action.setText("Start Polling")
+        
+        # Update stop operation visibility
+        if self.operation_in_progress:
+            self.tray_stop_action.setVisible(True)
+            self.tray_stop_action.setEnabled(not self.stop_requested)
+        else:
+            self.tray_stop_action.setVisible(False)
+        
+        logger.debug(f"update_tray_menu: Menu updated - Polling: {self.polling_enabled}, Operation: {self.operation_in_progress}")
+    
     def is_config_valid(self):
         valid_config = self.username and self.password and os.path.exists(self.download_dir)
         logger.debug(f"is_config_valid: Config valid: {valid_config}")
@@ -495,11 +560,10 @@ class MainWindow(QMainWindow):
         self.polling_enabled = not self.polling_enabled
         if self.polling_enabled:
             self.restart_poll_timers()
-            self.toggle_poll_action.setText("Stop Polling")
         else:
             self.stop_poll_timers()
-            self.toggle_poll_action.setText("Start Polling")
         self.update_tray_tooltip()
+        self.update_tray_menu()  # Update tray menu text
         logger.debug(f"toggle_polling: Polling toggled, enabled: {self.polling_enabled}")
         self.db_manager.update_log_operation(log_id, "success",
                                              f"Polling toggled to: {'Enabled' if self.polling_enabled else 'Disabled'}.")
@@ -770,6 +834,7 @@ class MainWindow(QMainWindow):
         self.status_progress.setVisible(False)  # Hide progress bar from status bar
         self.set_status_message(message)  # Set status bar message
         self.update_tray_tooltip()
+        self.update_tray_menu()  # Update tray menu to show Stop Operation
         logger.debug(f"start_operation: Operation started: {message}")
 
     def end_operation(self, message = "Operation completed."):
@@ -781,6 +846,7 @@ class MainWindow(QMainWindow):
         self.set_status_message(message)
         self.status_progress.setVisible(False)
         self.update_tray_tooltip()
+        self.update_tray_menu()  # Update tray menu to hide Stop Operation
         if self.polling_enabled:
             self.restart_poll_timers()
 
@@ -860,6 +926,7 @@ class MainWindow(QMainWindow):
         self.stop_requested = True
         self.stop_action.setEnabled(False)
         # Keep it visible but disabled to show operation is stopping
+        self.update_tray_menu()  # Update tray menu to reflect disabled state
         
         if self.scrape_thread and self.scrape_thread.isRunning():
             logger.debug("Stopping scrape thread...")
