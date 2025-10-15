@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 
 import requests
-from PyQt6.QtCore import Qt, pyqtSignal, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QEvent
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTableWidget, QTableWidgetItem, 
-                             QHeaderView, QProgressBar, QPushButton, QWidget, QHBoxLayout, QLabel)
+                             QHeaderView, QProgressBar, QPushButton, QWidget, QHBoxLayout, QLabel, QApplication)
 
 from src.core.scraper import SongScraper
 
@@ -122,6 +122,9 @@ class CurrentDownloadsDialog(QDialog):
         self.setMinimumSize(800, 400)
         self.setModal(False)  # Allow interaction with main window
         
+        # Make window frameless and add window hint to close on focus loss
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)
+        
         # Store active download threads and completed downloads
         self.active_downloads = {}  # song_id -> (thread, row_index)
         self.completed_downloads = set()  # Set of song_ids that are completed
@@ -133,6 +136,9 @@ class CurrentDownloadsDialog(QDialog):
         self.downloads_table.setHorizontalHeaderLabels([
             "Song", "Artist", "Progress", "Status"
         ])
+        
+        # Make table read-only - disable editing
+        self.downloads_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
         # Set column resize modes
         header = self.downloads_table.horizontalHeader()
