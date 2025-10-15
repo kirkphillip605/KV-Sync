@@ -834,7 +834,6 @@ class MainWindow(QMainWindow):
         logger.debug("view_logs: Log window closed.")
 
     def view_current_downloads(self):
-        from .currentDownloadsDialog import CurrentDownloadsDialog  # Import here to avoid circular import
         logger.debug("view_current_downloads: Opening current downloads window...")
         
         # Create dialog if it doesn't exist or was closed
