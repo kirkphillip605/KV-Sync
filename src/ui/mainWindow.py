@@ -188,21 +188,15 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
-        # Get new tracks
-        get_tracks_action = QAction(QIcon("resources/buttons/cloud_sync.png"), "Get New Tracks", self)
-        get_tracks_action.triggered.connect(self.get_new_tracks)
-        toolbar.addAction(get_tracks_action)
+        # Fetch New
+        fetch_new_action = QAction(QIcon("resources/buttons/cloud_sync.png"), "Fetch New", self)
+        fetch_new_action.triggered.connect(self.fetch_new)
+        toolbar.addAction(fetch_new_action)
 
-        # Stop operation
-        self.stop_action = QAction(QIcon("resources/buttons/stop.png"), "Stop Operation", self)
-        self.stop_action.triggered.connect(self.stop_current_operation)
-        self.stop_action.setEnabled(False)  # Disabled by default
-        toolbar.addAction(self.stop_action)
-
-        # Validate DB
-        validate_db_action = QAction(QIcon("resources/buttons/validate.png"), "Validate Database", self)
-        validate_db_action.triggered.connect(self.validate_db)
-        toolbar.addAction(validate_db_action)
+        # Full Sync
+        full_sync_action = QAction(QIcon("resources/buttons/validate.png"), "Full Sync", self)
+        full_sync_action.triggered.connect(self.full_sync)
+        toolbar.addAction(full_sync_action)
 
         # Spacer
         spacer = QWidget()
@@ -232,6 +226,13 @@ class MainWindow(QMainWindow):
         refresh_action.triggered.connect(self.refresh_table)
         toolbar.addAction(refresh_action)
 
+        # Stop operation (moved from top toolbar)
+        self.stop_action = QAction(QIcon("resources/buttons/stop.png"), "Stop Operation", self)
+        self.stop_action.triggered.connect(self.stop_current_operation)
+        self.stop_action.setEnabled(False)  # Disabled by default
+        self.stop_action.setVisible(False)  # Hidden by default
+        toolbar.addAction(self.stop_action)
+
         # Spacer
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -244,6 +245,12 @@ class MainWindow(QMainWindow):
         spacer2 = QWidget()
         spacer2.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer2)
+
+        # Current Downloads (new button to the left of View Logs)
+        current_downloads_icon = QIcon(os.path.join("resources", "buttons", "cloud_sync.png"))
+        current_downloads_action = QAction(current_downloads_icon, "Current Downloads", self)
+        current_downloads_action.triggered.connect(self.view_current_downloads)
+        toolbar.addAction(current_downloads_action)
 
         # Operation Logs (Bottom Toolbar, Right-aligned)
         operation_logs_button = QIcon(os.path.join("resources", "buttons", "logs.png"))
@@ -465,7 +472,7 @@ class MainWindow(QMainWindow):
 
     def poll_timer_triggered(self):
         if not self.operation_in_progress:
-            self.get_new_tracks()
+            self.fetch_new()
         logger.debug("poll_timer_triggered: Timer triggered, checked operation status.")
 
     def restart_poll_timers(self):
@@ -495,13 +502,13 @@ class MainWindow(QMainWindow):
         self.db_manager.update_log_operation(log_id, "success",
                                              f"Polling toggled to: {'Enabled' if self.polling_enabled else 'Disabled'}.")
 
-    def get_new_tracks(self):
+    def fetch_new(self):
         if not self.check_internet_before_operation():  # Check internet at start of operation
             return
 
-        logger.debug("get_new_tracks: Starting get new tracks operation...")
-        self.start_operation("Retrieving and processing new tracks...")
-        log_id = self.db_manager.start_log_operation("Get New Tracks",
+        logger.debug("fetch_new: Starting fetch new operation...")
+        self.start_operation("Fetching new tracks...")
+        log_id = self.db_manager.start_log_operation("Fetch New",
                                                      "Initiating process to retrieve new karaoke tracks.")
 
         # Initialize scraper and session
@@ -509,9 +516,9 @@ class MainWindow(QMainWindow):
         self.scraper = SongScraper("https://www.karaoke-version.com", self.username, self.password, self.session)
         try:
             self.scraper.login()
-            logger.debug("get_new_tracks: Scraper logged in successfully.")
+            logger.debug("fetch_new: Scraper logged in successfully.")
         except Exception as e:
-            logger.error(f"get_new_tracks: Scraper login failed: {e}")
+            logger.error(f"fetch_new: Scraper login failed: {e}")
             self.db_manager.update_log_operation(log_id, "failed", f"Scraper login failed: {e}")
             self.end_operation(str(e))
             return
@@ -530,7 +537,7 @@ class MainWindow(QMainWindow):
         self.scrape_thread.finished.connect(lambda: self.scrape_finished(log_id=log_id))  # Pass log_id
         self.scrape_thread.error.connect(self.handle_error)
         self.scrape_thread.start()
-        logger.debug("get_new_tracks: Scrape thread started.")
+        logger.debug("fetch_new: Scrape thread started.")
 
     def scrape_finished(self, log_id):
         logger.debug("scrape_finished: Scrape thread finished.")
@@ -544,6 +551,7 @@ class MainWindow(QMainWindow):
         self.refresh_table_with_sort()
         self.update_record_count()
         if not self.stop_requested:
+            self.set_status_message("Song Download in Progress")
             self.download_new_tracks()
         else:
             self.end_operation("Operation stopped by user.")
@@ -582,8 +590,7 @@ class MainWindow(QMainWindow):
                              "title_url": song [4], "order_date": song [5], "download_url": song [6],
                              "file_path": file_paths, # Corrected, file_paths is already a list.
                              "downloaded": 1,  # Mark as downloaded
-                             "extracted": song [9],  # extracted is at index 9
-                             "addedToSongDb": 0  # No longer adding to OpenKJ
+                             "extracted": song [9]  # extracted is at index 9
                              }
                 self.db_manager.update_song(song_dict)
                 logger.debug(f"download_new_tracks: Song ID {song [0]} already exists, marked as downloaded.")
@@ -592,8 +599,7 @@ class MainWindow(QMainWindow):
                 song_dict = {"song_id": song [0], "artist": song [1], "artist_url": song [2], "title": song [3],
                              "title_url": song [4], "order_date": song [5], "download_url": song [6],
                              "file_path": file_paths, "downloaded": song [8],  # downloaded flag is at index 8
-                             "extracted": song [9], "addedToSongDb": 0  # No longer adding to OpenKJ
-
+                             "extracted": song [9]
                              }
                 song_dicts.append(song_dict)
 
@@ -634,69 +640,96 @@ class MainWindow(QMainWindow):
         self.end_operation()
         logger.debug("download_finished: Completed.")
 
-    def validate_db(self):
+    def full_sync(self):
         if not self.check_internet_before_operation():  # Check internet at start of operation
             return
 
-        logger.debug("validate_db: Starting database validation...")
-        log_id = self.db_manager.start_log_operation("Validate Database",
-                                                     "Initiating database validation and reset process.")
-        reply = QMessageBox.question(self, "Validate Database",
-                                     "This will drop all existing records from the database. Song files are not affected. Continue?",
+        logger.debug("full_sync: Starting full sync operation...")
+        log_id = self.db_manager.start_log_operation("Full Sync",
+                                                     "Initiating full sync process.")
+        reply = QMessageBox.question(self, "Full Sync",
+                                     "This will clear all existing records from the database and re-sync all songs. Song files are not affected. Continue?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            logger.debug("validate_db: User confirmed database validation.")
-            self.start_operation("Validating and resetting the database...")
-            self.db_manager.log_operation(datetime.now().isoformat(), "Validate Database",
-                                          "Database validation started.", "info")  # Log to old table
+            logger.debug("full_sync: User confirmed full sync.")
+            self.start_operation("Performing full sync...")
+            self.db_manager.log_operation(datetime.now().isoformat(), "Full Sync",
+                                          "Full sync started.", "info")  # Log to old table
             self.db_manager.clear_database()
             self.update_record_count()
             self.setup_download_directory()
 
-            # Re-initialize scraper for validation
+            # Re-initialize scraper for full sync
             self.session = requests.Session()
             self.scraper = SongScraper("https://www.karaoke-version.com", self.username, self.password, self.session)
             try:
                 self.scraper.login()
-                logger.debug("validate_db: Scraper logged in for validation.")
+                logger.debug("full_sync: Scraper logged in for full sync.")
                 self.db_manager.update_log_operation(log_id, "running",
-                                                     "Scraper logged in successfully for validation.")
+                                                     "Scraper logged in successfully for full sync.")
             except Exception as e:
-                logger.error(f"validate_db: Scraper login failed during validation: {e}")
-                self.db_manager.update_log_operation(log_id, "failed", f"Scraper login failed during validation: {e}")
+                logger.error(f"full_sync: Scraper login failed during full sync: {e}")
+                self.db_manager.update_log_operation(log_id, "failed", f"Scraper login failed during full sync: {e}")
                 self.end_operation(str(e))
                 return
 
             self.scrape_thread = ScrapeThread(self.scraper, self.db_manager, validate=True)
             self.scrape_thread.log_id = log_id  # Attach log_id to thread
             self.scrape_thread.progress.connect(self.update_operation_progress)
-            self.scrape_thread.finished.connect(lambda: self.validate_db_finished(log_id=log_id))  # Pass log_id
+            self.scrape_thread.finished.connect(lambda: self.full_sync_finished(log_id=log_id))  # Pass log_id
             self.update_record_count()
             self.scrape_thread.error.connect(self.handle_error)
             self.scrape_thread.start()
-            logger.debug("validate_db: Validation scrape thread started.")
+            logger.debug("full_sync: Full sync scrape thread started.")
         else:
-            logger.debug("validate_db: User cancelled database validation.")
-            self.db_manager.update_log_operation(log_id, "cancelled", "Database validation cancelled by user.")
-            self.end_operation("Database validation cancelled.")
+            logger.debug("full_sync: User cancelled full sync.")
+            self.db_manager.update_log_operation(log_id, "cancelled", "Full sync cancelled by user.")
+            self.end_operation("Full sync cancelled.")
 
-    def validate_db_finished(self, log_id):
-        logger.debug("validate_db_finished: Database validation finished.")
-        validated_count = self.db_manager.get_total_song_count()  # Get total songs after validation
+    def full_sync_finished(self, log_id):
+        logger.debug("full_sync_finished: Full sync scraping finished.")
+        synced_count = self.db_manager.get_total_song_count()  # Get total songs after sync
+        
+        # Now check which songs are already downloaded by checking file paths
+        connection = sqlite3.connect(self.db_manager.db_path)
+        cursor = connection.cursor()
+        cursor.execute("SELECT song_id, file_path FROM purchased_songs")
+        songs = cursor.fetchall()
+        
+        # Update downloaded status for songs that have existing files
+        for song_id, file_path_json in songs:
+            if file_path_json:
+                file_paths = json.loads(file_path_json) if file_path_json else []
+                # Check if any of the file paths exist in the download directory
+                exists_flag = any(os.path.exists(os.path.join(self.download_dir, fp)) for fp in file_paths if file_paths)
+                if exists_flag:
+                    # Mark as downloaded in the database
+                    cursor.execute("UPDATE purchased_songs SET downloaded = 1 WHERE song_id = ?", (song_id,))
+                    logger.debug(f"full_sync_finished: Marked song {song_id} as downloaded (file exists)")
+        
+        connection.commit()
+        connection.close()
+        
         self.db_manager.update_log_operation(log_id, "success",
-                                             f"Database validation and reset completed. {validated_count} songs re-validated.")
+                                             f"Full sync completed. {synced_count} songs synced.")
         self.refresh_table_with_sort()
         self.update_record_count()
-        self.end_operation()
-        logger.debug("validate_db_finished: Completed.")
+        
+        # Now download any songs where downloaded is false
+        if not self.stop_requested:
+            self.set_status_message("Song Download in Progress")
+            self.download_new_tracks()
+        else:
+            self.end_operation("Operation stopped by user.")
+        logger.debug("full_sync_finished: Completed.")
 
     def start_operation(self, message = "Starting operation..."):
         self.operation_in_progress = True
         self.stop_requested = False
         self.stop_action.setEnabled(True)
+        self.stop_action.setVisible(True)  # Make visible during operations
         self.stop_poll_timers()
-        self.status_progress.setVisible(True)
-        self.status_progress.setValue(0)
+        self.status_progress.setVisible(False)  # Hide progress bar from status bar
         self.set_status_message(message)  # Set status bar message
         self.update_tray_tooltip()
         logger.debug(f"start_operation: Operation started: {message}")
@@ -706,6 +739,7 @@ class MainWindow(QMainWindow):
         self.operation_in_progress = False
         self.stop_requested = False
         self.stop_action.setEnabled(False)
+        self.stop_action.setVisible(False)  # Hide when no operations running
         self.set_status_message(message)
         self.status_progress.setVisible(False)
         self.update_tray_tooltip()
@@ -713,9 +747,9 @@ class MainWindow(QMainWindow):
             self.restart_poll_timers()
 
     def update_operation_progress(self, progress, message):
-        self.status_progress.setValue(progress)
+        # No longer updating progress bar - just update status message
         self.status_label.setText(message)
-        logger.debug(f"update_operation_progress: Progress updated: {progress}%, Message: {message}")
+        logger.debug(f"update_operation_progress: Message: {message}")
 
     def handle_error(self, message):
         logger.error(message)
@@ -764,6 +798,19 @@ class MainWindow(QMainWindow):
         logs_dialog.exec()
         logger.debug("view_logs: Log window closed.")
 
+    def view_current_downloads(self):
+        from .currentDownloadsDialog import CurrentDownloadsDialog  # Import here to avoid circular import
+        logger.debug("view_current_downloads: Opening current downloads window...")
+        
+        # Create dialog if it doesn't exist or was closed
+        if not hasattr(self, 'current_downloads_dialog') or not self.current_downloads_dialog.isVisible():
+            self.current_downloads_dialog = CurrentDownloadsDialog(self)
+        
+        self.current_downloads_dialog.show()
+        self.current_downloads_dialog.raise_()
+        self.current_downloads_dialog.activateWindow()
+        logger.debug("view_current_downloads: Current downloads window opened.")
+
     def on_header_clicked(self, logical_index):
         """Track table sort changes"""
         self.current_sort_column = logical_index
@@ -775,6 +822,7 @@ class MainWindow(QMainWindow):
         logger.debug("stop_current_operation: User requested to stop operation")
         self.stop_requested = True
         self.stop_action.setEnabled(False)
+        # Keep it visible but disabled to show operation is stopping
         
         if self.scrape_thread and self.scrape_thread.isRunning():
             logger.debug("Stopping scrape thread...")

@@ -51,10 +51,8 @@ class SettingsDialog(QDialog):
         self.credentials_tab = self.create_tab("Please enter your username and password for Karaoke-Version below.",
                                                self.create_credentials_layout())
         self.storage_tab = self.create_tab(
-            "Select the location where downloaded song files should be saved. It is important to also add this directory in OpenKJ. The pattern to use is: 'Artist - Title - SongID'",
+            "Select the location where downloaded song files should be saved. The pattern to use is: 'Artist - Title - SongID'",
             self.create_storage_layout())
-        self.openkj_tab = self.create_tab("**Please do not change these settings unless instructed to do so.",
-                                          self.create_openkj_layout())
         self.log_level_tab = self.create_tab(
             "Choose the desired log level and maximum number of logfiles to save. If you are unsure what to choose, set Log Level to 'INFO' and max logs to '10'",
             self.create_log_level_layout())
@@ -65,7 +63,6 @@ class SettingsDialog(QDialog):
         # Add tabs to the tab widget
         self.tabs.addTab(self.credentials_tab, "Karaoke-Version")
         self.tabs.addTab(self.storage_tab, "File Handling")
-        self.tabs.addTab(self.openkj_tab, "OpenKJ DB")
         self.tabs.addTab(self.log_level_tab, "Logging")
         self.tabs.addTab(self.display_tab, "Display")
 
@@ -176,29 +173,6 @@ class SettingsDialog(QDialog):
 
         return vbox_layout
 
-    def create_openkj_layout(self):
-        """Creates a QVBoxLayout for OpenKJ settings."""
-        vbox_layout = QVBoxLayout()
-
-        hbox_path = QHBoxLayout()
-        self.openkj_db_label = QLabel("OpenKJ Database Path:")
-        self.openkj_db_input = QLineEdit(self)
-        self.openkj_db_input.setReadOnly(True)
-        self.browse_openkj_db_button = QPushButton("Browse...", self)
-        self.browse_openkj_db_button.clicked.connect(self.browse_openkj_db)
-        hbox_path.addWidget(self.openkj_db_input)
-        hbox_path.addWidget(self.browse_openkj_db_button)
-        vbox_layout.addWidget(self.openkj_db_label)
-        vbox_layout.addLayout(hbox_path)
-
-        self.test_openkj_db_button = QPushButton("Test Connection", self)  # New button
-        self.test_openkj_db_button.clicked.connect(self.test_openkj_db_connection)  # New method
-        vbox_layout.addWidget(self.test_openkj_db_button)
-
-        self.auto_add_openkj_checkbox = QCheckBox("Auto Add to OpenKJ Database", self)
-        vbox_layout.addWidget(self.auto_add_openkj_checkbox)
-        return vbox_layout
-
     def create_log_level_layout(self):
         layout = QHBoxLayout()
         self.log_level_label = QLabel("Log Level:")
@@ -276,9 +250,6 @@ class SettingsDialog(QDialog):
         self.delete_zip_checkbox.setChecked(
             config.getboolean("Settings", "delete_zip_after_extraction", fallback=False))
         self.polling_time_input.setValue(config.getint("Settings", "polling_time", fallback=300))  # Use setValue
-        self.openkj_db_input.setText(config.get("Settings", "openkj_db", fallback=""))  # Load new setting
-        self.auto_add_openkj_checkbox.setChecked(
-            config.getboolean("Settings", "auto_add_openkj", fallback=False))  # Load new setting
         self.log_level_combo.setCurrentText(config.get("Logging", "log_level", fallback="INFO"))
         self.max_logs_input.setValue(config.getint("Logging", "max_logs", fallback=10))
         
@@ -327,12 +298,6 @@ class SettingsDialog(QDialog):
         if directory:
             self.download_dir_input.setText(directory)
             self.check_required_fields()  # Re-check after browsing.
-
-    def browse_openkj_db(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select OpenKJ Database File", "",
-                                                   "SQLite Database Files (*.sqlite *.db)")
-        if file_path:
-            self.openkj_db_input.setText(file_path)
 
     def validate_credentials(self):
         """Validates the entered username and password against the Karaoke Version website."""
@@ -388,8 +353,6 @@ class SettingsDialog(QDialog):
         config.set("Settings", "unzip_songs", str(self.unzip_songs_checkbox.isChecked()))
         config.set("Settings", "delete_zip_after_extraction", str(self.delete_zip_checkbox.isChecked()))
         config.set("Settings", "polling_time", str(self.polling_time_input.value()))  # Use .value()
-        config.set("Settings", "openkj_db", self.openkj_db_input.text())  # added
-        config.set("Settings", "auto_add_openkj", str(self.auto_add_openkj_checkbox.isChecked()))  # added
         config.set("Settings", "log_level", self.log_level_combo.currentText().lower())  # save log level
         config.set("Settings", "max_logs", str(self.max_logs_input.value()))
         
@@ -417,20 +380,6 @@ class SettingsDialog(QDialog):
         # Show the "Authenticate" button and hide the "Reset" button
         self.validate_button.show()
         self.reset_button.hide()
-
-    def test_openkj_db_connection(self):
-        """Test connection to OpenKJ database."""
-        db_path = self.openkj_db_input.text()
-        if not db_path:
-            QMessageBox.warning(self, "Error", "Please provide a valid OpenKJ database path.")
-            return
-
-        try:
-            connection = sqlite3.connect(db_path)
-            connection.close()
-            QMessageBox.information(self, "Success", "Integration with OpenKJ database was successful.")
-        except sqlite3.Error as e:
-            QMessageBox.warning(self, "Error", f"Failed to connect to OpenKJ database: <p> {e}")
 
     def handle_credentials_validated(self, valid):
         # This method could be expanded if we wanted. For now, we don't need any special behaviour.
