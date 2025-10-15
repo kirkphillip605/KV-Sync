@@ -121,6 +121,9 @@ class MainWindow(QMainWindow):
         self.scrape_thread = None  # Initialize threads to None
         self.download_thread = None
         self.downloader = None
+        
+        # Initialize the Current Downloads dialog once (persists for the app session)
+        self.current_downloads_dialog = None
 
         if not self.is_config_valid():
             self.open_settings()
@@ -625,8 +628,8 @@ class MainWindow(QMainWindow):
         # Connect individual download completion to table refresh
         self.downloader.song_download_completed.connect(self.on_song_download_completed)
         
-        # Show the Current Downloads dialog
-        if not hasattr(self, 'current_downloads_dialog') or not self.current_downloads_dialog.isVisible():
+        # Create or show the Current Downloads dialog (persists for the session)
+        if self.current_downloads_dialog is None:
             self.current_downloads_dialog = CurrentDownloadsDialog(self)
         self.current_downloads_dialog.show()
         self.current_downloads_dialog.raise_()
@@ -836,8 +839,8 @@ class MainWindow(QMainWindow):
     def view_current_downloads(self):
         logger.debug("view_current_downloads: Opening current downloads window...")
         
-        # Create dialog if it doesn't exist or was closed
-        if not hasattr(self, 'current_downloads_dialog') or not self.current_downloads_dialog.isVisible():
+        # Create dialog if it doesn't exist (persists for the session)
+        if self.current_downloads_dialog is None:
             self.current_downloads_dialog = CurrentDownloadsDialog(self)
         
         self.current_downloads_dialog.show()

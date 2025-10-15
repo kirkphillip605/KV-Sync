@@ -129,9 +129,9 @@ class CurrentDownloadsDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Create table for downloads
-        self.downloads_table = QTableWidget(0, 6)  # 6 columns
+        self.downloads_table = QTableWidget(0, 4)  # 4 columns
         self.downloads_table.setHorizontalHeaderLabels([
-            "Song", "Artist", "Progress", "Speed", "Status", "Action"
+            "Song", "Artist", "Progress", "Status"
         ])
         
         # Set column resize modes
@@ -139,11 +139,13 @@ class CurrentDownloadsDialog(QDialog):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Song
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Artist
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)     # Progress
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Speed
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Status
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Action
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Status
         
         self.downloads_table.setColumnWidth(2, 150)  # Progress column width
+        
+        # Hide table borders and row numbers
+        self.downloads_table.setShowGrid(False)
+        self.downloads_table.verticalHeader().setVisible(False)
         
         layout.addWidget(self.downloads_table)
         
@@ -190,15 +192,8 @@ class CurrentDownloadsDialog(QDialog):
         progress_layout.addWidget(progress_bar)
         self.downloads_table.setCellWidget(row, 2, progress_widget)
         
-        # Speed
-        self.downloads_table.setItem(row, 3, QTableWidgetItem("-- KB/sec"))
-        
         # Status
-        self.downloads_table.setItem(row, 4, QTableWidgetItem("Downloading..."))
-        
-        # Action button (initially empty, will add Retry if fails)
-        action_widget = QWidget()
-        self.downloads_table.setCellWidget(row, 5, action_widget)
+        self.downloads_table.setItem(row, 3, QTableWidgetItem("Downloading..."))
         
         # Create and start download thread
         thread = SingleDownloadThread(song, session, download_dir, username, password, self)
@@ -248,15 +243,8 @@ class CurrentDownloadsDialog(QDialog):
         progress_layout.addWidget(progress_bar)
         self.downloads_table.setCellWidget(row, 2, progress_widget)
         
-        # Speed
-        self.downloads_table.setItem(row, 3, QTableWidgetItem("-- KB/sec"))
-        
         # Status
-        self.downloads_table.setItem(row, 4, QTableWidgetItem("Downloading..."))
-        
-        # Action button (initially empty)
-        action_widget = QWidget()
-        self.downloads_table.setCellWidget(row, 5, action_widget)
+        self.downloads_table.setItem(row, 3, QTableWidgetItem("Downloading..."))
         
         # Store download info (without thread since it's handled by DownloadThread)
         self.active_downloads[song_id] = {
@@ -281,11 +269,6 @@ class CurrentDownloadsDialog(QDialog):
             if progress_bar:
                 progress_bar.setValue(progress_percent)
                 progress_bar.setFormat(f"{progress_percent}%")
-        
-        # Update speed
-        speed_item = self.downloads_table.item(row, 3)
-        if speed_item:
-            speed_item.setText(speed)
     
     def download_finished(self, song_id):
         """Handle successful download completion"""
@@ -303,7 +286,7 @@ class CurrentDownloadsDialog(QDialog):
                 progress_bar.setFormat("100%")
         
         # Update status
-        status_item = self.downloads_table.item(row, 4)
+        status_item = self.downloads_table.item(row, 3)
         if status_item:
             status_item.setText("Completed")
         
@@ -327,19 +310,10 @@ class CurrentDownloadsDialog(QDialog):
         row = download_info['row']
         
         # Update status
-        status_item = self.downloads_table.item(row, 4)
+        status_item = self.downloads_table.item(row, 3)
         if status_item:
             status_item.setText(f"Failed: {error_message[:30]}")
             status_item.setToolTip(error_message)
-        
-        # Add retry button
-        action_widget = QWidget()
-        action_layout = QHBoxLayout(action_widget)
-        action_layout.setContentsMargins(2, 2, 2, 2)
-        retry_button = QPushButton("Retry")
-        retry_button.clicked.connect(lambda: self.retry_download(song_id))
-        action_layout.addWidget(retry_button)
-        self.downloads_table.setCellWidget(row, 5, action_widget)
         
         logger.debug(f"Download failed for song {song_id}: {error_message}")
     
@@ -360,18 +334,10 @@ class CurrentDownloadsDialog(QDialog):
             if progress_bar:
                 progress_bar.setValue(0)
         
-        # Reset speed
-        speed_item = self.downloads_table.item(row, 3)
-        if speed_item:
-            speed_item.setText("-- KB/sec")
-        
         # Reset status
-        status_item = self.downloads_table.item(row, 4)
+        status_item = self.downloads_table.item(row, 3)
         if status_item:
             status_item.setText("Downloading...")
-        
-        # Remove action button
-        self.downloads_table.setCellWidget(row, 5, QWidget())
         
         # Start new download thread
         thread = SingleDownloadThread(
@@ -396,7 +362,7 @@ class CurrentDownloadsDialog(QDialog):
         # Find all rows with "Completed" status and remove them
         rows_to_remove = []
         for row in range(self.downloads_table.rowCount()):
-            status_item = self.downloads_table.item(row, 4)
+            status_item = self.downloads_table.item(row, 3)
             if status_item and status_item.text() == "Completed":
                 rows_to_remove.append(row)
         
@@ -430,10 +396,6 @@ class CurrentDownloadsDialog(QDialog):
     
     def closeEvent(self, event):
         """Handle dialog close event"""
-        # Stop all active downloads when dialog is closed
-        for song_id, info in list(self.active_downloads.items()):
-            thread = info['thread']
-            if thread and thread.isRunning():
-                thread.stop()
-                thread.wait(1000)  # Wait up to 1 second
+        # Don't stop downloads when dialog is closed - just hide it
+        # Downloads persist for the session
         event.accept()
