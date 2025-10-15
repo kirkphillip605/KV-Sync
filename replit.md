@@ -1,6 +1,6 @@
 # Overview
 
-Vibe SongSync is a desktop karaoke track management application built with PyQt6. It provides a complete solution for purchasing, downloading, and organizing karaoke tracks from karaoke-version.com. The application features automated scraping of purchased songs, batch downloading capabilities, file extraction and organization, and integration with OpenKJ karaoke software.
+Vibe SongSync is a desktop karaoke track management application built with PySide6. It provides a complete solution for purchasing, downloading, and organizing karaoke tracks from karaoke-version.com. The application features automated scraping of purchased songs, batch downloading capabilities, file extraction and organization, and integration with OpenKJ karaoke software.
 
 The system is designed as a standalone desktop application that helps karaoke enthusiasts manage their digital music library with features like intelligent date parsing, concurrent downloads, operation logging, and secure credential management.
 
@@ -11,7 +11,7 @@ Preferred communication style: Simple, everyday language.
 # System Architecture
 
 ## Desktop Application Framework
-- **Frontend**: PyQt6-based GUI with tabbed interface, splash screens, and system tray integration
+- **Frontend**: PySide6-based GUI with tabbed interface, splash screens, and system tray integration
 - **Architecture Pattern**: Model-View-Controller (MVC) with separate UI, core logic, and data layers
 - **Threading**: Multi-threaded design using QThread for non-blocking operations (scraping, downloading)
 - **Configuration**: INI-based configuration with encrypted credential storage using cryptography library
@@ -43,7 +43,7 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 ### Core Libraries
-- **PyQt6**: Primary GUI framework for desktop interface
+- **PySide6**: Primary GUI framework for desktop interface
 - **requests**: HTTP client for web scraping and file downloads
 - **beautifulsoup4**: HTML parsing for website content extraction
 - **cryptography**: Secure credential storage and encryption
