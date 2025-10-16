@@ -1,8 +1,8 @@
 # src/ui/operationLogsDialog.py
 import logging
 
-from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PyQt6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
                              QLineEdit, QPushButton, QSplitter, QTableView, QVBoxLayout, QWidget)
 
 logger = logging.getLogger('vibe_manager')

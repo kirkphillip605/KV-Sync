@@ -8,7 +8,7 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 import requests
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from src.core.utils import sanitize_filename
 
@@ -16,10 +16,10 @@ logger = logging.getLogger('vibe_manager')  # Use the main logger
 
 
 class SongDownloader(QObject):
-    download_progress = pyqtSignal(str, int)  # (song_id, progress_in_percent)
-    download_finished = pyqtSignal(str)  # (song_id)
-    download_failed = pyqtSignal(str, str)  # (song_id, error_message)
-    song_download_completed = pyqtSignal(str)  # Signal when individual song completes
+    download_progress = Signal(str, int)  # (song_id, progress_in_percent)
+    download_finished = Signal(str)  # (song_id)
+    download_failed = Signal(str, str)  # (song_id, error_message)
+    song_download_completed = Signal(str)  # Signal when individual song completes
 
     def __init__(self, config, session, max_concurrent_downloads = 5, parent = None):
         super().__init__(parent)

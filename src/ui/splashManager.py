@@ -1,15 +1,15 @@
 # src/ui/splashManager.py
 
-from PyQt6.QtWidgets import QSplashScreen
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtWidgets import QSplashScreen
+from PySide6.QtCore import QObject, Signal
 
 class SplashManager(QObject):
-    close_splash_pyqtSignal = pyqtSignal()
+    close_splash_signal = Signal()
 
     def __init__(self, splash: QSplashScreen):
         super().__init__()
         self.splash = splash
-        self.close_splash_pyqtSignal.connect(self.close_splash)
+        self.close_splash_signal.connect(self.close_splash)
 
     def close_splash(self):
         self.splash.close()

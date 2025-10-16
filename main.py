@@ -4,9 +4,9 @@ import os
 import sys
 import time
 import appdirs
-from PyQt6.QtGui import QIcon, QPixmap
-from PyQt6.QtWidgets import QApplication, QSplashScreen
-from PyQt6.QtCore import QTimer, Qt
+from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtWidgets import QApplication, QSplashScreen
+from PySide6.QtCore import QTimer, Qt
 
 from src.core.config import ConfigManager
 from src.core.database import DatabaseManager

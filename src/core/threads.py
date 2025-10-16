@@ -9,7 +9,7 @@ from zipfile import BadZipFile, ZipFile
 from datetime import datetime
 
 import requests
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from PySide6.QtCore import QObject, Signal, QThread
 
 from src.core.utils import sanitize_filename
 from src.core.date_utils import standardize_date
@@ -17,9 +17,9 @@ from src.core.date_utils import standardize_date
 logger = logging.getLogger('vibe_manager') # Use the main logger
 
 class ScrapeThread(QThread):
-    progress = pyqtSignal(int, str)  # (progress, message)
-    finished = pyqtSignal()
-    error = pyqtSignal(str)
+    progress = Signal(int, str)  # (progress, message)
+    finished = Signal()
+    error = Signal(str)
 
     def __init__(self, scraper, db_manager, last_song_id=None, validate=False):
         super().__init__()
@@ -76,13 +76,13 @@ class ScrapeThread(QThread):
 
 
 class DownloadThread(QThread):
-    progress = pyqtSignal(int, str)  # (progress, message)
-    finished = pyqtSignal()
-    error = pyqtSignal(str)
-    song_started = pyqtSignal(dict)  # (song) - emitted when a song starts downloading
-    song_progress = pyqtSignal(str, int, str)  # (song_id, progress_percent, speed) - emitted during download
-    song_finished = pyqtSignal(str)  # (song_id) - emitted when a song completes
-    song_failed = pyqtSignal(str, str)  # (song_id, error_message) - emitted when a song fails
+    progress = Signal(int, str)  # (progress, message)
+    finished = Signal()
+    error = Signal(str)
+    song_started = Signal(dict)  # (song) - emitted when a song starts downloading
+    song_progress = Signal(str, int, str)  # (song_id, progress_percent, speed) - emitted during download
+    song_finished = Signal(str)  # (song_id) - emitted when a song completes
+    song_failed = Signal(str, str)  # (song_id, error_message) - emitted when a song fails
 
     def __init__(self, songs, downloader, db_manager, unzip_songs=False, delete_zip=False):
         super().__init__()
